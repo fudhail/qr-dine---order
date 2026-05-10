@@ -74,7 +74,7 @@ const VegDot = ({ isVeg }) => (
 );
 
 // --- GUEST APP ---
-const GuestApp = ({ menuItems, orders, setOrders }) => {
+const GuestApp = ({ menuItems, orders, setOrders, socketConnected }) => {
   const [currentScreen, setCurrentScreen] = useState('menu');
   const [cart, setCart] = useState([]);
   const [activeCategory, setActiveCategory] = useState('All');
@@ -136,8 +136,11 @@ const GuestApp = ({ menuItems, orders, setOrders }) => {
           <div style={{ position: 'sticky', top: 0, zIndex: 100, background: C.white, padding: '16px 20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h1 style={{ color: C.emerald, fontSize: 18, margin: 0 }}>Sree Gokulam Residency</h1>
-                <p style={{ color: C.textSub, fontSize: 13, marginTop: 2 }}>Room 108 · Rahul Menon</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <h1 style={{ color: C.emerald, fontSize: 18, margin: 0 }}>Grand Vista Hotel</h1>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: socketConnected ? C.emeraldMid : C.danger, title: socketConnected ? 'Connected' : 'Disconnected' }}></div>
+                </div>
+                <p style={{ color: C.textSub, fontSize: 13, marginTop: 2 }}>Room 101 · Guest Folio</p>
               </div>
               <button 
                 onClick={() => setCurrentScreen('cart')}
@@ -359,7 +362,7 @@ const ClockWidget = () => {
 };
 
 // --- KITCHEN APP (KDS) ---
-const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems }) => {
+const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketConnected }) => {
   const [activeTab, setActiveTab] = useState('queue');
   const [selectedOrder, setSelectedOrder] = useState(null);
 
@@ -489,7 +492,7 @@ const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems }) => {
           <div style={{ background: C.brassLight, padding: 8, borderRadius: 8 }}><ChefHat size={24} color={C.brass} /></div>
           <div>
             <h1 className="serif" style={{ fontSize: 20, color: C.emerald, margin: 0 }}>Kitchen Display System</h1>
-            <p style={{ fontSize: 13, color: C.textSub, marginTop: 2 }}>Sree Gokulam Residency</p>
+            <p style={{ fontSize: 13, color: C.textSub, marginTop: 2 }}>Grand Vista Hotel</p>
           </div>
         </div>
         
@@ -578,7 +581,7 @@ const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems }) => {
 };
 
 // --- ADMIN APP ---
-const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills, setRoomBills }) => {
+const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills, setRoomBills, socketConnected }) => {
   const [activeSection, setActiveSection] = useState('billing');
   const [selectedRoom, setSelectedRoom] = useState(roomBills[0]?.room || null);
   const [showAddChargeModal, setShowAddChargeModal] = useState(false);
@@ -646,8 +649,8 @@ const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills, setRo
             <LayoutDashboard size={24} color={C.brassLight} />
           </div>
           <div>
-            <div className="serif" style={{ fontSize: 18, color: C.brassLight, fontWeight: 700, lineHeight: 1.2 }}>Sree Gokulam</div>
-            <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>Admin Panel</div>
+            <div className="serif" style={{ fontSize: 18, color: C.brassLight, fontWeight: 700, lineHeight: 1.2 }}>Grand Vista</div>
+            <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>Management Portal</div>
           </div>
         </div>
 
@@ -936,7 +939,7 @@ const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills, setRo
                       <div style={{ flex: 1 }}>
                         <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.textSub, marginBottom: 8 }}>Category</label>
                         <select value={newItem.category} onChange={e => setNewItem({...newItem, category: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1px solid ${C.border}`, fontSize: 15, background: C.white }}>
-                          {['Breakfast', 'Mains', 'Snacks', 'Desserts', 'Beverages', 'Spirits'].map(c => <option key={c} value={c}>{c}</option>)}
+                          {['Breakfast', 'Starters', 'Mains', 'Breads', 'Desserts', 'Beverages', 'Spirits'].map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                       </div>
                     </div>
@@ -979,8 +982,8 @@ const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills, setRo
           
           <div className="print-section animate-pop" style={{ background: C.white, width: '100%', maxWidth: 600, padding: 48, borderRadius: 16, color: C.text, boxShadow: '0 24px 64px rgba(0,0,0,0.2)' }}>
              <div style={{ textAlign: 'center', borderBottom: `2px solid ${C.text}`, paddingBottom: 24, marginBottom: 32 }}>
-                <h1 className="serif" style={{ fontSize: 32, margin: 0 }}>SREE GOKULAM RESIDENCY</h1>
-                <p style={{ fontSize: 14, color: C.textSub, marginTop: 4 }}>Amballur, Thrissur · Kerala - 680302</p>
+                <h1 className="serif" style={{ fontSize: 32, margin: 0 }}>GRAND VISTA HOTEL</h1>
+                <p style={{ fontSize: 14, color: C.textSub, marginTop: 4 }}>123 Luxury Ave · Downtown City</p>
                 <div style={{ marginTop: 16, display: 'inline-block', border: `1px solid ${C.text}`, padding: '4px 16px', fontWeight: 700, letterSpacing: 2 }}>TAX INVOICE</div>
              </div>
 
@@ -1048,17 +1051,62 @@ const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills, setRo
 // --- ROOT APP COMPONENT ---
 export default function App() {
   const [activeInterface, setActiveInterface] = useState(null); // 'guest' | 'kitchen' | 'admin'
-  const [orders, setOrdersState] = useState([]);
-  const [menuItems, setMenuItemsState] = useState([]);
-  const [roomBills, setRoomBillsState] = useState([]);
+  const [socketConnected, setSocketConnected] = useState(false);
+
+  // --- INITIAL DATA (Sree Gokulam Defaults) ---
+  const initialMenu = [
+    { id: 1, name: 'Continental Breakfast', desc: 'Choice of eggs, toast, juice and coffee', price: 250, category: 'Breakfast', isVeg: false, available: true },
+    { id: 2, name: 'Pancakes with Syrup', desc: 'Fluffy pancakes served with maple syrup and berries', price: 180, category: 'Breakfast', isVeg: true, available: true },
+    { id: 3, name: 'Eggs Benedict', desc: 'Poached eggs on English muffins with hollandaise', price: 320, category: 'Breakfast', isVeg: false, available: true },
+    { id: 4, name: 'Garden Salad', desc: 'Fresh seasonal greens with balsamic vinaigrette', price: 150, category: 'Starters', isVeg: true, available: true },
+    { id: 5, name: 'Buffalo Wings', desc: 'Spicy chicken wings with blue cheese dip', price: 280, category: 'Starters', isVeg: false, available: true },
+    { id: 6, name: 'Mushroom Risotto', desc: 'Creamy arborio rice with wild mushrooms', price: 380, category: 'Mains', isVeg: true, available: true },
+    { id: 7, name: 'Grilled Salmon', desc: 'Fresh salmon with asparagus and lemon butter', price: 550, category: 'Mains', isVeg: false, available: true },
+    { id: 8, name: 'Chicken Alfredo', desc: 'Fettuccine pasta in rich creamy parmesan sauce', price: 340, category: 'Mains', isVeg: false, available: true },
+    { id: 9, name: 'New York Cheesecake', desc: 'Classic creamy cheesecake with berry compote', price: 180, category: 'Desserts', isVeg: true, available: true },
+    { id: 10, name: 'Chocolate Lava Cake', desc: 'Warm cake with a molten chocolate center', price: 220, category: 'Desserts', isVeg: true, available: true },
+    { id: 11, name: 'Freshly Brewed Coffee', desc: 'Artisanal roasted beans', price: 80, category: 'Beverages', isVeg: true, available: true },
+    { id: 12, name: 'Iced Peach Tea', desc: 'Refreshing house-made tea', price: 110, category: 'Beverages', isVeg: true, available: true },
+  ];
+
+  const initialOrders = [
+    { id: 10, token: '#10', room: '102', status: 'PREPARING', minutesAgo: 18, items: [{name: 'Signature Club Sandwich', qty: 1, price: 280}, {name: 'Fresh Orange Juice', qty: 2, price: 120}], note: 'No onions', subtotal: 520, total: 624 },
+    { id: 12, token: '#12', room: '101', status: 'NEW', minutesAgo: 3, items: [{name: 'Avocado Toast', qty: 1, price: 320}, {name: 'Cappuccino', qty: 2, price: 150}], note: '', subtotal: 620, total: 744 },
+  ];
+
+  const initialBills = [
+    { room: '101', guestName: 'Alexander Knight', checkIn: '2024-05-10', checkOut: '2024-05-12', roomCharge: 4500, roomServiceCharges: [], status: 'OPEN' },
+    { room: '102', guestName: 'Sarah Jenkins', checkIn: '2024-05-09', checkOut: '2024-05-11', roomCharge: 4200, roomServiceCharges: [{ orderId: 10, amount: 624, time: '11:30 AM', desc: 'Club Sandwich ×1, Orange Juice ×2' }], status: 'OPEN' },
+  ];
+
+  const [orders, setOrdersState] = useState(initialOrders);
+  const [menuItems, setMenuItemsState] = useState(initialMenu);
+  const [roomBills, setRoomBillsState] = useState(initialBills);
 
   useEffect(() => {
-    socket.on('state_update', (data) => {
-      setOrdersState(data.orders);
-      setMenuItemsState(data.menuItems);
-      setRoomBillsState(data.roomBills);
+    socket.on('connect', () => {
+      console.log('Socket connected');
+      setSocketConnected(true);
     });
-    return () => socket.off('state_update');
+    socket.on('disconnect', () => {
+      console.log('Socket disconnected');
+      setSocketConnected(false);
+    });
+    socket.on('connect_error', (err) => {
+      console.error('Socket connection error:', err.message);
+      setSocketConnected(false);
+    });
+    socket.on('state_update', (data) => {
+      if (data.orders) setOrdersState(data.orders);
+      if (data.menuItems) setMenuItemsState(data.menuItems);
+      if (data.roomBills) setRoomBillsState(data.roomBills);
+    });
+    return () => {
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('connect_error');
+      socket.off('state_update');
+    };
   }, []);
 
   const setOrders = (newOrders) => {
@@ -1094,9 +1142,9 @@ export default function App() {
           <div style={{ display: 'inline-flex', background: C.emeraldLight, padding: 16, borderRadius: '50%', marginBottom: 16 }}>
              <UtensilsCrossed size={32} color={C.emerald} />
           </div>
-          <h1 className="serif" style={{ fontSize: 32, color: C.emerald, margin: '0 0 8px 0' }}>Sree Gokulam Residency</h1>
-          <p style={{ color: C.textSub, fontSize: 15 }}>Amballur, Thrissur · Kerala</p>
-          <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700, color: C.brass, letterSpacing: 2, textTransform: 'uppercase' }}>Digital Room Service Platform</div>
+          <h1 className="serif" style={{ fontSize: 32, color: C.emerald, margin: '0 0 8px 0' }}>Grand Vista Hotel</h1>
+          <p style={{ color: C.textSub, fontSize: 15 }}>Premium Hospitality & Services</p>
+          <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700, color: C.brass, letterSpacing: 2, textTransform: 'uppercase' }}>Unified Management Platform</div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%', maxWidth: 400 }}>
@@ -1125,15 +1173,15 @@ export default function App() {
       </div>
 
       <div style={{ display: activeInterface === 'guest' ? 'block' : 'none' }}>
-        <GuestApp menuItems={menuItems} orders={orders} setOrders={setOrders} />
+        <GuestApp menuItems={menuItems} orders={orders} setOrders={setOrders} socketConnected={socketConnected} />
       </div>
       
       <div style={{ display: activeInterface === 'kitchen' ? 'block' : 'none' }}>
-        <KitchenApp orders={orders} setOrders={setOrders} menuItems={menuItems} setMenuItems={setMenuItems} />
+        <KitchenApp orders={orders} setOrders={setOrders} menuItems={menuItems} setMenuItems={setMenuItems} socketConnected={socketConnected} />
       </div>
 
       <div style={{ display: activeInterface === 'admin' ? 'block' : 'none' }}>
-        <AdminApp orders={orders} setOrders={setOrders} menuItems={menuItems} setMenuItems={setMenuItems} roomBills={roomBills} setRoomBills={setRoomBills} />
+        <AdminApp orders={orders} setOrders={setOrders} menuItems={menuItems} setMenuItems={setMenuItems} roomBills={roomBills} setRoomBills={setRoomBills} socketConnected={socketConnected} />
       </div>
       
       {activeInterface !== null && (
