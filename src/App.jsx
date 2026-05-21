@@ -3,7 +3,8 @@ import { io } from 'socket.io-client';
 import { 
   UtensilsCrossed, ChefHat, LayoutDashboard, ChevronRight, ShoppingCart, 
   ChevronLeft, MapPin, Clock, CheckCircle, Circle, Phone, ClipboardList, 
-  AlertTriangle, Plus, Trash2, Printer, TrendingUp, Package, Star, X
+  AlertTriangle, Plus, Trash2, Printer, TrendingUp, Package, Star, X,
+  CheckSquare, Square, Send
 } from 'lucide-react';
 
 // --- DESIGN SYSTEM ---
@@ -20,6 +21,45 @@ const C = {
 
 // Initialize socket connection using the current window's hostname
 const socket = io(`http://${window.location.hostname}:3000`);
+
+// --- ORDER / ITEM STATUS (partial delivery) ---
+const ITEM_STATUS_FLOW = ['NEW', 'PREPARING', 'ON_THE_WAY', 'DELIVERED'];
+const ITEM_STATUS_LABEL = {
+  NEW: 'Queued',
+  PREPARING: 'Preparing',
+  ON_THE_WAY: 'On the way',
+  DELIVERED: 'Delivered',
+};
+const ITEM_STATUS_COLOR = {
+  NEW: C.emerald,
+  PREPARING: C.warning,
+  ON_THE_WAY: C.info,
+  DELIVERED: C.textMuted,
+};
+
+const ensureOrderItems = (order) => {
+  const items = order.items.map((item, idx) => ({
+    ...item,
+    id: item.id ?? `${order.id}-${idx}`,
+    status: item.status || order.status || 'NEW',
+  }));
+  return { ...order, items, status: deriveOrderStatus(items) };
+};
+
+const deriveOrderStatus = (items) => {
+  if (items.every(i => i.status === 'DELIVERED')) return 'DELIVERED';
+  if (items.some(i => i.status === 'ON_THE_WAY')) return 'ON_THE_WAY';
+  if (items.some(i => i.status === 'PREPARING')) return 'PREPARING';
+  return 'NEW';
+};
+
+const normalizeOrders = (orders) => orders.map(ensureOrderItems);
+
+const orderHasItemsIn = (order, status) => order.items.some(i => i.status === status);
+
+const getItemCountsByStatus = (order) =>
+  ITEM_STATUS_FLOW.reduce((acc, s) => ({ ...acc, [s]: order.items.filter(i => i.status === s).length }), {});
+
 
 // --- GLOBAL STYLES ---
 const GlobalStyles = () => (
@@ -108,17 +148,25 @@ const GuestApp = ({ menuItems, orders, setOrders, socketConnected }) => {
 
   const placeOrder = () => {
     if (cart.length === 0) return;
-    const newOrder = {
-      id: Date.now(),
+    const orderId = Date.now();
+    const newOrder = ensureOrderItems({
+      id: orderId,
       token: `#${orders.length + 10}`,
       room: '108', // Hardcoded for guest demo
       status: 'NEW',
       minutesAgo: 0,
-      items: cart.map(i => ({ name: i.name, qty: i.qty, price: i.price })),
+      items: cart.map((i, idx) => ({
+        id: `${orderId}-${idx}`,
+        name: i.name,
+        qty: i.qty,
+        price: i.price,
+        category: i.category,
+        status: 'NEW',
+      })),
       note: specialNote,
       subtotal: cartSubtotal,
       total: grandTotal
-    };
+    });
     setOrders([newOrder, ...orders]);
     setLastOrderId(newOrder.id);
     setCart([]);
@@ -311,9 +359,9 @@ const GuestApp = ({ menuItems, orders, setOrders, socketConnected }) => {
               
               {['NEW', 'PREPARING', 'ON_THE_WAY', 'DELIVERED'].map((step, idx) => {
                 const statuses = ['NEW', 'PREPARING', 'ON_THE_WAY', 'DELIVERED'];
-                const currentIdx = statuses.indexOf(trackingOrder.status);
-                const isPast = idx < currentIdx;
-                const isActive = idx === currentIdx;
+                const itemCounts = getItemCountsByStatus(trackingOrder);
+                const isActive = trackingOrder.items.some(i => i.status === step);
+                const isPast = trackingOrder.items.every(i => statuses.indexOf(i.status) > idx);
                 
                 const labels = { 'NEW': 'Order Placed', 'PREPARING': 'Being Prepared', 'ON_THE_WAY': 'On the Way', 'DELIVERED': 'Delivered' };
 
@@ -321,15 +369,35 @@ const GuestApp = ({ menuItems, orders, setOrders, socketConnected }) => {
                   <div key={step} style={{ display: 'flex', alignItems: 'center', gap: 16, zIndex: 1, position: 'relative' }}>
                     <div style={{ width: 24, height: 24, borderRadius: '50%', background: isPast ? C.emerald : isActive ? C.brass : C.white, border: `2px solid ${isPast ? C.emerald : isActive ? C.brass : C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {isPast && <CheckCircle size={14} color={C.white} />}
-                      {isActive && <div className="animate-pulse-dot" style={{ width: 8, height: 8, borderRadius: '50%', background: C.white }}></div>}
+                      {isActive && !isPast && <div className="animate-pulse-dot" style={{ width: 8, height: 8, borderRadius: '50%', background: C.white }}></div>}
                     </div>
-                    <span style={{ fontWeight: isActive ? 700 : 500, color: isActive ? C.text : isPast ? C.textSub : C.textMuted, fontSize: 15 }}>
-                      {labels[step]}
-                    </span>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontWeight: isActive ? 700 : 500, color: isActive ? C.text : isPast ? C.textSub : C.textMuted, fontSize: 15 }}>
+                        {labels[step]}
+                        {isActive && itemCounts[step] < trackingOrder.items.length && (
+                          <span style={{ marginLeft: 8, fontSize: 12, color: C.brass, fontWeight: 600 }}>({itemCounts[step]} of {trackingOrder.items.length})</span>
+                        )}
+                      </span>
+                    </div>
                   </div>
                 );
               })}
             </div>
+            {trackingOrder.items.some(i => trackingOrder.items.filter(x => x.status !== i.status).length > 0) && (
+              <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.borderLight}` }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.textSub, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Your items</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {trackingOrder.items.map(item => (
+                    <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 14 }}>
+                      <span style={{ fontWeight: 500 }}>{item.qty}× {item.name}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: ITEM_STATUS_COLOR[item.status] + '18', color: ITEM_STATUS_COLOR[item.status] }}>
+                        {ITEM_STATUS_LABEL[item.status]}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </Card>
 
           <Card style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -364,121 +432,278 @@ const ClockWidget = () => {
 // --- KITCHEN APP (KDS) ---
 const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketConnected }) => {
   const [activeTab, setActiveTab] = useState('queue');
-  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [selectedColumnStatus, setSelectedColumnStatus] = useState(null);
+  const [selectedItemIds, setSelectedItemIds] = useState([]);
 
-  const newOrders = orders.filter(o => o.status === 'NEW');
-  const prepOrders = orders.filter(o => o.status === 'PREPARING');
-  const otwOrders = orders.filter(o => o.status === 'ON_THE_WAY');
-
-  const updateStatus = (id, newStatus) => {
-    setOrders(orders.map(o => o.id === id ? { ...o, status: newStatus } : o));
-    if (selectedOrder?.id === id) {
-      setSelectedOrder(null);
-    }
+  const COLUMN_PANEL_MODES = {
+    NEW: { from: 'NEW', to: 'PREPARING', label: 'Start Preparing', color: C.emerald, icon: ChefHat },
+    PREPARING: { from: 'PREPARING', to: 'ON_THE_WAY', label: 'Send to Room', color: C.warning, icon: Send },
+    ON_THE_WAY: { from: 'ON_THE_WAY', to: 'DELIVERED', label: 'Mark Delivered', color: C.info, icon: CheckCircle },
+  };
+  const COLUMN_CONTEXT_LABEL = {
+    NEW: 'New order — start kitchen prep',
+    PREPARING: 'Partial delivery — pick items to send',
+    ON_THE_WAY: 'Out for delivery — confirm arrival',
   };
 
-  const OrderCard = ({ order }) => (
-    <Card 
-      onClick={() => setSelectedOrder(order)}
-      style={{ 
-        padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', marginBottom: 12, 
-        cursor: 'pointer',
-        border: selectedOrder?.id === order.id ? `2px solid ${C.emerald}` : '2px solid transparent',
-        transition: '0.2s'
-      }} 
-      className="animate-fade-up"
-    >
-      <div style={{ height: 4, background: order.status === 'NEW' ? C.emerald : order.status === 'PREPARING' ? C.warning : C.info }}></div>
-      <div style={{ padding: 12, flex: 1 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-          <div>
-            <div className="serif" style={{ fontSize: 18, fontWeight: 700 }}>{order.token}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: C.textSub, fontSize: 12, marginTop: 2 }}>
-              <MapPin size={12} /> Room {order.room}
-            </div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, background: C.borderLight, padding: '2px 6px', borderRadius: 4, display: 'inline-block' }}>{order.minutesAgo}m</div>
-          </div>
-        </div>
-        
-        <div style={{ borderTop: `1px solid ${C.borderLight}`, margin: '8px 0' }}></div>
-        
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {order.items.slice(0, 2).map((item, idx) => (
-            <div key={idx} style={{ display: 'flex', gap: 6, fontSize: 13, fontWeight: 500 }}>
-              <span style={{ color: C.emeraldMid }}>{item.qty}×</span>
-              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
-            </div>
-          ))}
-          {order.items.length > 2 && (
-            <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>+ {order.items.length - 2} more items</div>
-          )}
-        </div>
-        {order.note && (
-          <div style={{ color: C.warning, fontSize: 12, marginTop: 8, fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: 4 }}>
-            <AlertTriangle size={12} /> Special note
-          </div>
-        )}
-      </div>
-    </Card>
-  );
+  const activeOrders = orders.filter(o => o.status !== 'DELIVERED');
+  const newOrders = activeOrders.filter(o => orderHasItemsIn(o, 'NEW'));
+  const prepOrders = activeOrders.filter(o => orderHasItemsIn(o, 'PREPARING'));
+  const otwOrders = activeOrders.filter(o => orderHasItemsIn(o, 'ON_THE_WAY'));
 
-  const OrderDetailPanel = ({ order }) => {
-    if (!order) return null;
-    
-    let btnText, btnColor, nextStatus;
-    if (order.status === 'NEW') { nextStatus = 'PREPARING'; btnText = 'Start Preparing'; btnColor = C.emerald; }
-    else if (order.status === 'PREPARING') { nextStatus = 'ON_THE_WAY'; btnText = 'Dispatch Order'; btnColor = C.warning; }
-    else if (order.status === 'ON_THE_WAY') { nextStatus = 'DELIVERED'; btnText = 'Mark Delivered ✓'; btnColor = C.info; }
+  const selectedOrder = orders.find(o => o.id === selectedOrderId) || null;
+
+  useEffect(() => {
+    setSelectedItemIds([]);
+  }, [selectedOrderId, selectedColumnStatus]);
+
+  const patchOrder = (orderId, updater) => {
+    setOrders(prev => prev.map(o => {
+      if (o.id !== orderId) return o;
+      return ensureOrderItems(updater(o));
+    }));
+  };
+
+  const toggleItemSelection = (itemId) => {
+    setSelectedItemIds(prev =>
+      prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]
+    );
+  };
+
+  const selectItemsWhere = (order, predicate) => {
+    setSelectedItemIds(order.items.filter(predicate).map(i => i.id));
+  };
+
+  const advanceSelectedItems = (order, fromStatus, toStatus) => {
+    const ids = selectedItemIds.length > 0
+      ? selectedItemIds.filter(id => order.items.find(i => i.id === id && i.status === fromStatus))
+      : order.items.filter(i => i.status === fromStatus).map(i => i.id);
+    if (ids.length === 0) return;
+    patchOrder(order.id, o => ({
+      ...o,
+      items: o.items.map(item => ids.includes(item.id) ? { ...item, status: toStatus } : item),
+    }));
+    setSelectedItemIds([]);
+  };
+
+  const ItemProgressBar = ({ order }) => {
+    const counts = getItemCountsByStatus(order);
+    const total = order.items.length;
+    if (total <= 1) return null;
+    return (
+      <div style={{ display: 'flex', height: 4, borderRadius: 2, overflow: 'hidden', marginTop: 8, gap: 2 }}>
+        {ITEM_STATUS_FLOW.filter(s => s !== 'DELIVERED').map(s => (
+          counts[s] > 0 ? (
+            <div key={s} style={{ flex: counts[s], background: ITEM_STATUS_COLOR[s], minWidth: counts[s] ? 8 : 0 }} title={`${counts[s]} ${ITEM_STATUS_LABEL[s]}`} />
+          ) : null
+        ))}
+      </div>
+    );
+  };
+
+  const OrderCard = ({ order, columnStatus }) => {
+    const columnItems = order.items.filter(i => i.status === columnStatus);
+    const isPartial = columnItems.length < order.items.length;
+    const borderColor = columnStatus === 'NEW' ? C.emerald : columnStatus === 'PREPARING' ? C.warning : C.info;
 
     return (
-      <div className="animate-fade-up" style={{ width: 340, background: C.white, borderLeft: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 24px rgba(0,0,0,0.05)', zIndex: 5 }}>
+      <Card 
+        onClick={() => {
+          setSelectedOrderId(order.id);
+          setSelectedColumnStatus(columnStatus);
+        }}
+        style={{ 
+          padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', marginBottom: 12, 
+          cursor: 'pointer',
+          border: selectedOrderId === order.id && selectedColumnStatus === columnStatus
+            ? `2px solid ${borderColor}`
+            : '2px solid transparent',
+          transition: '0.2s'
+        }} 
+        className="animate-fade-up"
+      >
+        <div style={{ height: 4, background: borderColor }}></div>
+        <div style={{ padding: 12, flex: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+            <div>
+              <div className="serif" style={{ fontSize: 18, fontWeight: 700 }}>{order.token}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: C.textSub, fontSize: 12, marginTop: 2 }}>
+                <MapPin size={12} /> Room {order.room}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, background: C.borderLight, padding: '2px 6px', borderRadius: 4 }}>{order.minutesAgo}m</div>
+              {isPartial && (
+                <div style={{ fontSize: 10, fontWeight: 700, color: borderColor, background: borderColor + '15', padding: '2px 6px', borderRadius: 4 }}>
+                  {columnItems.length}/{order.items.length} here
+                </div>
+              )}
+            </div>
+          </div>
+          
+          <div style={{ borderTop: `1px solid ${C.borderLight}`, margin: '8px 0' }}></div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {columnItems.slice(0, 3).map((item) => (
+              <div key={item.id} style={{ display: 'flex', gap: 6, fontSize: 13, fontWeight: 500 }}>
+                <span style={{ color: C.emeraldMid }}>{item.qty}×</span>
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
+              </div>
+            ))}
+            {columnItems.length > 3 && (
+              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>+ {columnItems.length - 3} more in this stage</div>
+            )}
+          </div>
+          <ItemProgressBar order={order} />
+          {order.note && (
+            <div style={{ color: C.warning, fontSize: 12, marginTop: 8, fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <AlertTriangle size={12} /> Special note
+            </div>
+          )}
+        </div>
+      </Card>
+    );
+  };
+
+  const OrderDetailPanel = ({ order, columnContext }) => {
+    if (!order || !columnContext) return null;
+
+    const hasMultipleStages = new Set(order.items.map(i => i.status)).size > 1;
+    const columnItems = order.items.filter(i => i.status === columnContext);
+    const mode = columnItems.length > 0 ? COLUMN_PANEL_MODES[columnContext] : null;
+    const selectableItems = mode ? order.items.filter(i => i.status === mode.from) : [];
+    const selectedReady = selectableItems.filter(i => selectedItemIds.includes(i.id));
+    const selectionCount = selectedReady.length || selectableItems.length;
+
+    const handleAdvance = () => {
+      if (!mode) return;
+      advanceSelectedItems(order, mode.from, mode.to);
+    };
+
+    const ActionIcon = mode?.icon;
+
+    return (
+      <div className="animate-fade-up" style={{ width: 380, background: C.white, borderLeft: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 24px rgba(0,0,0,0.05)', zIndex: 5 }}>
         <div style={{ padding: '20px 24px', borderBottom: `1px solid ${C.borderLight}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Order Details</h2>
-          <button onClick={() => setSelectedOrder(null)}><X size={20} color={C.textMuted} /></button>
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Order Details</h2>
+            <p style={{ fontSize: 12, color: COLUMN_PANEL_MODES[columnContext]?.color || C.textSub, margin: '4px 0 0', fontWeight: 600 }}>
+              {COLUMN_CONTEXT_LABEL[columnContext]}
+            </p>
+          </div>
+          <button onClick={() => { setSelectedOrderId(null); setSelectedColumnStatus(null); }}><X size={20} color={C.textMuted} /></button>
         </div>
         
         <div style={{ padding: 24, flex: 1, overflowY: 'auto' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
             <div>
               <div className="serif" style={{ fontSize: 32, fontWeight: 700, lineHeight: 1 }}>{order.token}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.textSub, fontSize: 14, marginTop: 8 }}>
                 <MapPin size={16} /> Room {order.room}
               </div>
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 13, fontWeight: 600, background: C.borderLight, padding: '4px 8px', borderRadius: 6, display: 'inline-block' }}>{order.minutesAgo} min ago</div>
-            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, background: C.borderLight, padding: '4px 8px', borderRadius: 6 }}>{order.minutesAgo} min ago</div>
           </div>
 
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.textSub, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Items ({order.items.reduce((s, i)=>s+i.qty, 0)})</div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
-            {order.items.map((item, idx) => (
-              <div key={idx} style={{ display: 'flex', gap: 12, fontSize: 15, fontWeight: 500, borderBottom: `1px solid ${C.borderLight}`, paddingBottom: 12 }}>
-                <span style={{ color: C.emeraldMid, fontWeight: 700 }}>{item.qty}×</span>
-                <span style={{ flex: 1 }}>{item.name}</span>
-              </div>
-            ))}
-          </div>
-
-          {order.note && (
-            <div style={{ background: C.warningLight, color: C.warning, padding: 16, borderRadius: 12, fontSize: 14, fontStyle: 'italic', marginBottom: 24 }}>
-              <strong>Note:</strong> {order.note}
+          {hasMultipleStages && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+              {ITEM_STATUS_FLOW.filter(s => getItemCountsByStatus(order)[s] > 0).map(s => (
+                <span key={s} style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 8, background: ITEM_STATUS_COLOR[s] + '18', color: ITEM_STATUS_COLOR[s] }}>
+                  {getItemCountsByStatus(order)[s]} {ITEM_STATUS_LABEL[s]}
+                </span>
+              ))}
             </div>
           )}
 
+          {mode && selectableItems.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.textSub, textTransform: 'uppercase', letterSpacing: 1 }}>
+                Ready to {mode.label.toLowerCase()} ({selectableItems.length})
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => selectItemsWhere(order, i => i.status === mode.from)}
+                  style={{ fontSize: 12, fontWeight: 600, color: C.emerald }}
+                >All</button>
+                {columnContext === 'PREPARING' && (
+                  <button
+                    onClick={() => selectItemsWhere(order, i => i.status === mode.from && ['Starters', 'Soups', 'Beverages', 'Breakfast'].includes(i.category))}
+                    style={{ fontSize: 12, fontWeight: 600, color: C.brass }}
+                  >Starters & soups</button>
+                )}
+                <button onClick={() => setSelectedItemIds([])} style={{ fontSize: 12, fontWeight: 600, color: C.textMuted }}>Clear</button>
+              </div>
+            </div>
+          )}
+
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.textSub, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
+            All items ({order.items.reduce((s, i) => s + i.qty, 0)})
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+            {order.items.map((item) => {
+              const canSelect = mode && item.status === mode.from;
+              const isSelected = selectedItemIds.includes(item.id);
+              const isDone = item.status === 'DELIVERED';
+
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  disabled={!canSelect}
+                  onClick={() => canSelect && toggleItemSelection(item.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: 14, borderRadius: 12, textAlign: 'left',
+                    border: `1.5px solid ${isSelected ? C.emerald : C.borderLight}`,
+                    background: isSelected ? C.emeraldLight : isDone ? C.borderLight : C.white,
+                    opacity: isDone ? 0.65 : 1,
+                    cursor: canSelect ? 'pointer' : 'default',
+                  }}
+                >
+                  {canSelect ? (
+                    isSelected ? <CheckSquare size={20} color={C.emerald} /> : <Square size={20} color={C.textMuted} />
+                  ) : (
+                    <div style={{ width: 20, height: 20, borderRadius: '50%', background: ITEM_STATUS_COLOR[item.status], flexShrink: 0 }} />
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 600 }}>{item.qty}× {item.name}</div>
+                    {item.category && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{item.category}</div>}
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '4px 8px', borderRadius: 6, background: ITEM_STATUS_COLOR[item.status] + '18', color: ITEM_STATUS_COLOR[item.status], flexShrink: 0 }}>
+                    {ITEM_STATUS_LABEL[item.status]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {order.note && (
+            <div style={{ background: C.warningLight, color: C.warning, padding: 16, borderRadius: 12, fontSize: 14, fontStyle: 'italic' }}>
+              <strong>Note:</strong> {order.note}
+            </div>
+          )}
         </div>
 
-        {nextStatus && (
+        {mode && (
           <div style={{ padding: 24, borderTop: `1px solid ${C.borderLight}` }}>
             <button 
-              onClick={() => updateStatus(order.id, nextStatus)}
-              style={{ width: '100%', background: btnColor, color: C.white, padding: 16, borderRadius: 12, fontWeight: 700, fontSize: 15, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, boxShadow: `0 8px 24px ${btnColor}40` }}
+              onClick={handleAdvance}
+              disabled={selectableItems.length === 0}
+              style={{ width: '100%', background: mode.color, color: C.white, padding: 16, borderRadius: 12, fontWeight: 700, fontSize: 15, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, boxShadow: `0 8px 24px ${mode.color}40` }}
             >
-              {btnText}
+              {ActionIcon && <ActionIcon size={18} />}
+              {selectionCount < selectableItems.length && selectedReady.length > 0
+                ? `${mode.label} (${selectionCount} selected)`
+                : selectionCount < selectableItems.length
+                  ? `${mode.label} — all ${selectableItems.length} ready`
+                  : `${mode.label} (${selectableItems.length})`}
             </button>
+            {mode.from === 'PREPARING' && selectableItems.length > 1 && (
+              <p style={{ textAlign: 'center', fontSize: 12, color: C.textMuted, marginTop: 10 }}>
+                Tip: send starters & soups first while mains finish cooking
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -513,7 +738,7 @@ const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketConnecte
                 NEW ORDERS <span style={{ background: C.emerald, color: C.white, padding: '2px 8px', borderRadius: 12, fontSize: 12 }}>{newOrders.length}</span>
               </h2>
               <div style={{ flex: 1, overflowY: 'auto', paddingRight: 8 }} className="hide-scrollbar">
-                {newOrders.map(o => <OrderCard key={o.id} order={o} />)}
+                {newOrders.map(o => <OrderCard key={`${o.id}-new`} order={o} columnStatus="NEW" />)}
               </div>
             </div>
             
@@ -522,7 +747,7 @@ const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketConnecte
                 PREPARING <span style={{ background: C.warning, color: C.white, padding: '2px 8px', borderRadius: 12, fontSize: 12 }}>{prepOrders.length}</span>
               </h2>
               <div style={{ flex: 1, overflowY: 'auto', paddingRight: 8 }} className="hide-scrollbar">
-                {prepOrders.map(o => <OrderCard key={o.id} order={o} />)}
+                {prepOrders.map(o => <OrderCard key={`${o.id}-prep`} order={o} columnStatus="PREPARING" />)}
               </div>
             </div>
 
@@ -531,11 +756,11 @@ const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketConnecte
                 ON THE WAY <span style={{ background: C.info, color: C.white, padding: '2px 8px', borderRadius: 12, fontSize: 12 }}>{otwOrders.length}</span>
               </h2>
               <div style={{ flex: 1, overflowY: 'auto', paddingRight: 8 }} className="hide-scrollbar">
-                {otwOrders.map(o => <OrderCard key={o.id} order={o} />)}
+                {otwOrders.map(o => <OrderCard key={`${o.id}-otw`} order={o} columnStatus="ON_THE_WAY" />)}
               </div>
             </div>
           </div>
-          <OrderDetailPanel order={selectedOrder} />
+          <OrderDetailPanel order={selectedOrder} columnContext={selectedColumnStatus} />
         </div>
       )}
 
@@ -1069,10 +1294,33 @@ export default function App() {
     { id: 12, name: 'Iced Peach Tea', desc: 'Refreshing house-made tea', price: 110, category: 'Beverages', isVeg: true, available: true },
   ];
 
-  const initialOrders = [
-    { id: 10, token: '#10', room: '102', status: 'PREPARING', minutesAgo: 18, items: [{name: 'Signature Club Sandwich', qty: 1, price: 280}, {name: 'Fresh Orange Juice', qty: 2, price: 120}], note: 'No onions', subtotal: 520, total: 624 },
-    { id: 12, token: '#12', room: '101', status: 'NEW', minutesAgo: 3, items: [{name: 'Avocado Toast', qty: 1, price: 320}, {name: 'Cappuccino', qty: 2, price: 150}], note: '', subtotal: 620, total: 744 },
-  ];
+  const initialOrders = normalizeOrders([
+    {
+      id: 10, token: '#10', room: '102', status: 'ON_THE_WAY', minutesAgo: 18,
+      items: [
+        { id: '10-0', name: 'Signature Club Sandwich', qty: 1, price: 280, category: 'Mains', status: 'ON_THE_WAY' },
+        { id: '10-1', name: 'Fresh Orange Juice', qty: 2, price: 120, category: 'Beverages', status: 'ON_THE_WAY' },
+      ],
+      note: 'No onions', subtotal: 520, total: 624,
+    },
+    {
+      id: 12, token: '#12', room: '108', status: 'NEW', minutesAgo: 3,
+      items: [
+        { id: '12-0', name: 'Pancakes with Syrup', qty: 1, price: 180, category: 'Breakfast', status: 'NEW' },
+        { id: '12-1', name: 'Eggs Benedict', qty: 1, price: 320, category: 'Breakfast', status: 'NEW' },
+      ],
+      note: '', subtotal: 500, total: 600,
+    },
+    {
+      id: 13, token: '#13', room: '108', status: 'PREPARING', minutesAgo: 8,
+      items: [
+        { id: '13-0', name: 'Garden Salad', qty: 1, price: 150, category: 'Starters', status: 'PREPARING' },
+        { id: '13-1', name: 'Buffalo Wings', qty: 1, price: 280, category: 'Starters', status: 'PREPARING' },
+        { id: '13-2', name: 'Mushroom Risotto', qty: 1, price: 380, category: 'Mains', status: 'PREPARING' },
+      ],
+      note: '', subtotal: 810, total: 972,
+    },
+  ]);
 
   const initialBills = [
     { room: '101', guestName: 'Alexander Knight', checkIn: '2024-05-10', checkOut: '2024-05-12', roomCharge: 4500, roomServiceCharges: [], status: 'OPEN' },
@@ -1097,7 +1345,7 @@ export default function App() {
       setSocketConnected(false);
     });
     socket.on('state_update', (data) => {
-      if (data.orders) setOrdersState(data.orders);
+      if (data.orders) setOrdersState(normalizeOrders(data.orders));
       if (data.menuItems) setMenuItemsState(data.menuItems);
       if (data.roomBills) setRoomBillsState(data.roomBills);
     });
@@ -1111,7 +1359,8 @@ export default function App() {
 
   const setOrders = (newOrders) => {
     setOrdersState(prev => {
-      const updated = typeof newOrders === 'function' ? newOrders(prev) : newOrders;
+      const raw = typeof newOrders === 'function' ? newOrders(prev) : newOrders;
+      const updated = normalizeOrders(raw);
       socket.emit('set_orders', updated);
       return updated;
     });

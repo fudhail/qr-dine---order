@@ -15,8 +15,31 @@ const io = new Server(server, {
 });
 
 let orders = [
-  { id: 10, token: '#10', room: '102', status: 'PREPARING', minutesAgo: 18, items: [{name: 'Signature Club Sandwich', qty: 1, price: 280}, {name: 'Fresh Orange Juice', qty: 2, price: 120}], note: 'No onions', subtotal: 520, total: 624 },
-  { id: 12, token: '#12', room: '101', status: 'NEW', minutesAgo: 3, items: [{name: 'Avocado Toast', qty: 1, price: 320}, {name: 'Cappuccino', qty: 2, price: 150}], note: '', subtotal: 620, total: 744 },
+  {
+    id: 10, token: '#10', room: '102', status: 'ON_THE_WAY', minutesAgo: 18,
+    items: [
+      { id: '10-0', name: 'Signature Club Sandwich', qty: 1, price: 280, category: 'Mains', status: 'ON_THE_WAY' },
+      { id: '10-1', name: 'Fresh Orange Juice', qty: 2, price: 120, category: 'Beverages', status: 'ON_THE_WAY' },
+    ],
+    note: 'No onions', subtotal: 520, total: 624,
+  },
+  {
+    id: 12, token: '#12', room: '108', status: 'NEW', minutesAgo: 3,
+    items: [
+      { id: '12-0', name: 'Pancakes with Syrup', qty: 1, price: 180, category: 'Breakfast', status: 'NEW' },
+      { id: '12-1', name: 'Eggs Benedict', qty: 1, price: 320, category: 'Breakfast', status: 'NEW' },
+    ],
+    note: '', subtotal: 500, total: 600,
+  },
+  {
+    id: 13, token: '#13', room: '108', status: 'PREPARING', minutesAgo: 8,
+    items: [
+      { id: '13-0', name: 'Garden Salad', qty: 1, price: 150, category: 'Starters', status: 'PREPARING' },
+      { id: '13-1', name: 'Buffalo Wings', qty: 1, price: 280, category: 'Starters', status: 'PREPARING' },
+      { id: '13-2', name: 'Mushroom Risotto', qty: 1, price: 380, category: 'Mains', status: 'PREPARING' },
+    ],
+    note: '', subtotal: 810, total: 972,
+  },
 ];
 
 let menuItems = [
