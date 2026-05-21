@@ -438,13 +438,13 @@ const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketConnecte
 
   const COLUMN_PANEL_MODES = {
     NEW: { from: 'NEW', to: 'PREPARING', label: 'Start Preparing', color: C.emerald, icon: ChefHat },
-    PREPARING: { from: 'PREPARING', to: 'ON_THE_WAY', label: 'Send to Room', color: C.warning, icon: Send },
-    ON_THE_WAY: { from: 'ON_THE_WAY', to: 'DELIVERED', label: 'Mark Delivered', color: C.info, icon: CheckCircle },
+    PREPARING: { from: 'PREPARING', to: 'ON_THE_WAY', label: 'Preparation Complete', color: C.warning, icon: CheckCircle },
+    ON_THE_WAY: { from: 'ON_THE_WAY', to: 'DELIVERED', label: 'Dispatch', color: C.info, icon: Send },
   };
   const COLUMN_CONTEXT_LABEL = {
     NEW: 'New order — start kitchen prep',
-    PREPARING: 'Partial delivery — pick items to send',
-    ON_THE_WAY: 'Out for delivery — confirm arrival',
+    PREPARING: 'Select ready items — mark preparation complete',
+    ON_THE_WAY: 'Out for delivery — dispatch all items together',
   };
 
   const activeOrders = orders.filter(o => o.status !== 'DELIVERED');
@@ -572,12 +572,14 @@ const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketConnecte
     const hasMultipleStages = new Set(order.items.map(i => i.status)).size > 1;
     const columnItems = order.items.filter(i => i.status === columnContext);
     const mode = columnItems.length > 0 ? COLUMN_PANEL_MODES[columnContext] : null;
-    const selectableItems = mode ? order.items.filter(i => i.status === mode.from) : [];
-    const selectedReady = selectableItems.filter(i => selectedItemIds.includes(i.id));
-    const selectionCount = selectedReady.length || selectableItems.length;
+    const allowItemSelection = columnContext !== 'ON_THE_WAY';
+    const actionableItems = mode ? order.items.filter(i => i.status === mode.from) : [];
+    const selectedReady = actionableItems.filter(i => selectedItemIds.includes(i.id));
+    const displayItems = columnContext === 'ON_THE_WAY' ? columnItems : order.items;
 
     const handleAdvance = () => {
       if (!mode) return;
+      if (columnContext === 'ON_THE_WAY') setSelectedItemIds([]);
       advanceSelectedItems(order, mode.from, mode.to);
     };
 
@@ -616,64 +618,115 @@ const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketConnecte
             </div>
           )}
 
-          {mode && selectableItems.length > 0 && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.textSub, textTransform: 'uppercase', letterSpacing: 1 }}>
-                Ready to {mode.label.toLowerCase()} ({selectableItems.length})
+          {mode && actionableItems.length > 0 && allowItemSelection && (
+            <div style={{
+              background: C.borderLight,
+              borderRadius: 12,
+              padding: '12px 14px',
+              marginBottom: 16,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
+                  {selectedReady.length > 0
+                    ? `${selectedReady.length} of ${actionableItems.length} selected`
+                    : `${actionableItems.length} item${actionableItems.length !== 1 ? 's' : ''} ready`}
+                </div>
+                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>
+                  Tap items below or use quick select
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                 <button
+                  type="button"
                   onClick={() => selectItemsWhere(order, i => i.status === mode.from)}
-                  style={{ fontSize: 12, fontWeight: 600, color: C.emerald }}
-                >All</button>
-                {columnContext === 'PREPARING' && (
-                  <button
-                    onClick={() => selectItemsWhere(order, i => i.status === mode.from && ['Starters', 'Soups', 'Beverages', 'Breakfast'].includes(i.category))}
-                    style={{ fontSize: 12, fontWeight: 600, color: C.brass }}
-                  >Starters & soups</button>
-                )}
-                <button onClick={() => setSelectedItemIds([])} style={{ fontSize: 12, fontWeight: 600, color: C.textMuted }}>Clear</button>
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    background: C.white,
+                    color: C.emerald,
+                    border: `1px solid ${C.emerald}`,
+                  }}
+                >
+                  Select all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedItemIds([])}
+                  disabled={selectedReady.length === 0}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    background: C.white,
+                    color: C.textSub,
+                    border: `1px solid ${C.border}`,
+                    opacity: selectedReady.length === 0 ? 0.5 : 1,
+                  }}
+                >
+                  Clear
+                </button>
               </div>
             </div>
           )}
 
           <div style={{ fontSize: 13, fontWeight: 700, color: C.textSub, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
-            All items ({order.items.reduce((s, i) => s + i.qty, 0)})
+            {columnContext === 'ON_THE_WAY'
+              ? `Items for delivery (${displayItems.reduce((s, i) => s + i.qty, 0)})`
+              : `All items (${order.items.reduce((s, i) => s + i.qty, 0)})`}
           </div>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
-            {order.items.map((item) => {
-              const canSelect = mode && item.status === mode.from;
+            {displayItems.map((item) => {
+              const canSelect = allowItemSelection && mode && item.status === mode.from;
               const isSelected = selectedItemIds.includes(item.id);
               const isDone = item.status === 'DELIVERED';
+              const rowStyle = {
+                display: 'flex', alignItems: 'center', gap: 12, padding: 14, borderRadius: 12,
+                border: `1.5px solid ${isSelected ? C.emerald : C.borderLight}`,
+                background: isSelected ? C.emeraldLight : isDone ? C.borderLight : C.white,
+                opacity: isDone ? 0.65 : 1,
+              };
+
+              if (canSelect) {
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => toggleItemSelection(item.id)}
+                    style={{ ...rowStyle, textAlign: 'left', cursor: 'pointer' }}
+                  >
+                    {isSelected ? <CheckSquare size={20} color={C.emerald} /> : <Square size={20} color={C.textMuted} />}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 600 }}>{item.qty}× {item.name}</div>
+                      {item.category && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{item.category}</div>}
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '4px 8px', borderRadius: 6, background: ITEM_STATUS_COLOR[item.status] + '18', color: ITEM_STATUS_COLOR[item.status], flexShrink: 0 }}>
+                      {ITEM_STATUS_LABEL[item.status]}
+                    </span>
+                  </button>
+                );
+              }
 
               return (
-                <button
-                  key={item.id}
-                  type="button"
-                  disabled={!canSelect}
-                  onClick={() => canSelect && toggleItemSelection(item.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 12, padding: 14, borderRadius: 12, textAlign: 'left',
-                    border: `1.5px solid ${isSelected ? C.emerald : C.borderLight}`,
-                    background: isSelected ? C.emeraldLight : isDone ? C.borderLight : C.white,
-                    opacity: isDone ? 0.65 : 1,
-                    cursor: canSelect ? 'pointer' : 'default',
-                  }}
-                >
-                  {canSelect ? (
-                    isSelected ? <CheckSquare size={20} color={C.emerald} /> : <Square size={20} color={C.textMuted} />
-                  ) : (
-                    <div style={{ width: 20, height: 20, borderRadius: '50%', background: ITEM_STATUS_COLOR[item.status], flexShrink: 0 }} />
-                  )}
+                <div key={item.id} style={rowStyle}>
+                  <div style={{ width: 20, height: 20, borderRadius: '50%', background: ITEM_STATUS_COLOR[item.status], flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 600 }}>{item.qty}× {item.name}</div>
                     {item.category && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{item.category}</div>}
                   </div>
-                  <span style={{ fontSize: 10, fontWeight: 700, padding: '4px 8px', borderRadius: 6, background: ITEM_STATUS_COLOR[item.status] + '18', color: ITEM_STATUS_COLOR[item.status], flexShrink: 0 }}>
-                    {ITEM_STATUS_LABEL[item.status]}
-                  </span>
-                </button>
+                  {columnContext !== 'ON_THE_WAY' && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '4px 8px', borderRadius: 6, background: ITEM_STATUS_COLOR[item.status] + '18', color: ITEM_STATUS_COLOR[item.status], flexShrink: 0 }}>
+                      {ITEM_STATUS_LABEL[item.status]}
+                    </span>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -689,21 +742,16 @@ const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketConnecte
           <div style={{ padding: 24, borderTop: `1px solid ${C.borderLight}` }}>
             <button 
               onClick={handleAdvance}
-              disabled={selectableItems.length === 0}
+              disabled={actionableItems.length === 0}
               style={{ width: '100%', background: mode.color, color: C.white, padding: 16, borderRadius: 12, fontWeight: 700, fontSize: 15, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, boxShadow: `0 8px 24px ${mode.color}40` }}
             >
               {ActionIcon && <ActionIcon size={18} />}
-              {selectionCount < selectableItems.length && selectedReady.length > 0
-                ? `${mode.label} (${selectionCount} selected)`
-                : selectionCount < selectableItems.length
-                  ? `${mode.label} — all ${selectableItems.length} ready`
-                  : `${mode.label} (${selectableItems.length})`}
+              {columnContext === 'ON_THE_WAY'
+                ? mode.label
+                : selectedReady.length > 0 && selectedReady.length < actionableItems.length
+                  ? `${mode.label} (${selectedReady.length})`
+                  : mode.label}
             </button>
-            {mode.from === 'PREPARING' && selectableItems.length > 1 && (
-              <p style={{ textAlign: 'center', fontSize: 12, color: C.textMuted, marginTop: 10 }}>
-                Tip: send starters & soups first while mains finish cooking
-              </p>
-            )}
           </div>
         )}
       </div>
