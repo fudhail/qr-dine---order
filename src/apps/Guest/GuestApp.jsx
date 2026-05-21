@@ -66,33 +66,48 @@ export const GuestApp = ({ menuItems, orders, setOrders, socketConnected }) => {
       {/* MENU SCREEN */}
       {currentScreen === 'menu' && (
         <div className="animate-fade-up">
-          <div style={{ position: 'sticky', top: 0, zIndex: 100, background: C.white, padding: '16px 20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+          <div style={{ position: 'sticky', top: 0, zIndex: 100, background: C.white, padding: '18px 20px', boxShadow: '0 6px 24px rgba(6,6,6,0.06)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <h1 style={{ color: C.emerald, fontSize: 18, margin: 0 }}>Grand Vista Hotel</h1>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: socketConnected ? C.emeraldMid : C.danger, title: socketConnected ? 'Connected' : 'Disconnected' }}></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <h1 style={{ color: C.emerald, fontSize: 18, margin: 0 }}>Grand Vista</h1>
+                  <div style={{ width: 9, height: 9, borderRadius: '50%', background: socketConnected ? C.emeraldMid : C.danger, title: socketConnected ? 'Connected' : 'Disconnected' }}></div>
                 </div>
-                <p style={{ color: C.textSub, fontSize: 13, marginTop: 2 }}>Room 101 · Guest Folio</p>
+                <p style={{ color: C.textSub, fontSize: 13, marginTop: 2 }}>Room 101 · In-room Dining</p>
               </div>
-              <button 
-                onClick={() => setCurrentScreen('cart')}
-                style={{ position: 'relative', background: C.emeraldLight, padding: 10, borderRadius: '50%' }}
-              >
-                <ShoppingCart size={20} color={C.emerald} />
-                {cartTotalQty > 0 && (
-                  <div key={cartTotalQty} className="animate-pulse-badge" style={{ position: 'absolute', top: -4, right: -4, background: C.brass, color: C.white, fontSize: 11, fontWeight: 700, width: 20, height: 20, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {cartTotalQty}
-                  </div>
-                )}
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button onClick={() => setCurrentScreen('cart')} style={{ position: 'relative', background: C.emeraldLight, padding: 10, borderRadius: 12, boxShadow: '0 6px 18px rgba(6,78,59,0.08)' }}>
+                  <ShoppingCart size={18} color={C.emerald} />
+                  {cartTotalQty > 0 && (
+                    <div key={cartTotalQty} className="animate-pulse-badge" style={{ position: 'absolute', top: -6, right: -6, background: C.brass, color: C.white, fontSize: 11, fontWeight: 700, width: 22, height: 22, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {cartTotalQty}
+                    </div>
+                  )}
+                </button>
+              </div>
             </div>
-            
-            <div className="hide-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 16, paddingBottom: 4 }}>
+
+            <div style={{ marginTop: 14, display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ background: `linear-gradient(90deg, ${C.brassLight}20, ${C.emeraldLight}20)`, padding: 12, borderRadius: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: C.textSub, fontWeight: 700 }}>Today's Special</div>
+                    <div style={{ fontWeight: 800, fontSize: 16, color: C.text }}>Chef's Butter Chicken</div>
+                    <div style={{ fontSize: 12, color: C.textSub, marginTop: 4 }}>Limited time — served with naan</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontWeight: 800, color: C.brass }}>₹499</div>
+                    <button onClick={() => updateQty({ id: 'special-1', name: "Chef's Butter Chicken", price: 499, isVeg: false }, 1)} style={{ marginTop: 8, background: C.brass, color: C.white, padding: '8px 12px', borderRadius: 10, fontWeight: 800 }}>Add</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="hide-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 12, paddingBottom: 4 }}>
               {categories.map(cat => (
                 <button 
                   key={cat} onClick={() => setActiveCategory(cat)}
-                  style={{ whiteSpace: 'nowrap', padding: '6px 16px', borderRadius: 999, fontSize: 13, fontWeight: 600, background: activeCategory === cat ? C.emerald : C.borderLight, color: activeCategory === cat ? C.white : C.textSub }}
+                  style={{ whiteSpace: 'nowrap', padding: '8px 18px', borderRadius: 999, fontSize: 13, fontWeight: 700, background: activeCategory === cat ? C.emerald : C.borderLight, color: activeCategory === cat ? C.white : C.textSub, boxShadow: activeCategory === cat ? '0 8px 20px rgba(6,78,59,0.08)' : 'none' }}
                 >
                   {cat}
                 </button>
@@ -100,33 +115,76 @@ export const GuestApp = ({ menuItems, orders, setOrders, socketConnected }) => {
             </div>
           </div>
 
-          <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
+            {/* Recommended / Upsell strip */}
+            {(() => {
+              const upsellItems = menuItems.filter(i => i.upsell).slice(0,3);
+              const fallback = menuItems.slice(0,3);
+              const items = upsellItems.length ? upsellItems : fallback;
+              return (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800 }}>Recommended for you</h3>
+                    <span style={{ color: C.textSub, fontSize: 13 }}>Popular choices</span>
+                  </div>
+                  <div className="hide-scrollbar" style={{ display: 'flex', gap: 12, overflowX: 'auto' }}>
+                    {items.map((item, idx) => (
+                      <div key={idx} style={{ minWidth: 220 }}>
+                        <Card style={{ padding: 12, display: 'flex', gap: 12, alignItems: 'center' }}>
+                          {item.image ? (
+                            <div style={{ width: 72, height: 72, borderRadius: 10, overflow: 'hidden', flexShrink: 0 }}>
+                              <img src={item.image} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            </div>
+                          ) : (
+                            <div style={{ width: 72, height: 72, borderRadius: 10, background: C.borderLight }} />
+                          )}
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ fontWeight: 800 }}>{item.name}</div>
+                              <div style={{ fontWeight: 800, color: C.brass }}>₹{item.price}</div>
+                            </div>
+                            <div style={{ color: C.textSub, fontSize: 12, marginTop: 6 }}>{item.desc?.slice(0,60)}</div>
+                            <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+                              <button onClick={() => updateQty(item, 1)} style={{ background: C.emerald, color: C.white, padding: '8px 12px', borderRadius: 10, fontWeight: 700 }}>Add</button>
+                              <button onClick={() => { setActiveCategory(item.category || 'All'); window.scrollTo({ top: 400, behavior: 'smooth' }); }} style={{ background: C.borderLight, padding: '8px 12px', borderRadius: 10 }}>View</button>
+                            </div>
+                          </div>
+                        </Card>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {displayedItems.map((item, idx) => {
               const qty = getQty(item.id);
               return (
-                <Card key={item.id} style={{ padding: 16, display: 'flex', gap: 16, animationDelay: `${idx * 0.05}s` }} className="animate-fade-up">
+                <Card key={item.id} style={{ padding: 12, display: 'flex', gap: 14, alignItems: 'center', animationDelay: `${idx * 0.04}s`, borderRadius: 16 }} className="animate-fade-up">
                   {item.image && (
-                    <div style={{ width: 80, height: 80, borderRadius: 12, overflow: 'hidden', flexShrink: 0 }}>
+                    <div style={{ width: 96, height: 80, borderRadius: 12, overflow: 'hidden', flexShrink: 0 }}>
                       <img src={item.image} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     </div>
                   )}
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <VegDot isVeg={item.isVeg} />
-                      <h3 style={{ fontSize: 16, color: C.text, margin: 0 }}>{item.name}</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <VegDot isVeg={item.isVeg} />
+                        <h3 style={{ fontSize: 16, color: C.text, margin: 0 }}>{item.name}</h3>
+                      </div>
+                      <div style={{ fontWeight: 800, color: C.emeraldMid }}>₹{item.price}</div>
                     </div>
-                    <p style={{ color: C.textSub, fontSize: 13, marginBottom: 8, flex: 1 }}>{item.desc}</p>
+                    <p style={{ color: C.textSub, fontSize: 13, margin: '8px 0', flex: 1 }}>{item.desc?.slice(0, 100)}</p>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontWeight: 700, color: C.emeraldMid }}>₹{item.price}</div>
-                      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-                        {qty === 0 ? (
-                          <button onClick={() => updateQty(item, 1)} style={{ background: C.emeraldLight, color: C.emerald, padding: '6px 16px', borderRadius: 8, fontWeight: 700, fontSize: 13 }}>
-                            + ADD
-                          </button>
-                        ) : (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, border: `1.5px solid ${C.emerald}`, borderRadius: 8, padding: '2px 8px' }}>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => { updateQty(item, 1); }} style={{ background: C.emeraldLight, color: C.emerald, padding: '8px 12px', borderRadius: 10, fontWeight: 700 }}>{qty === 0 ? '+ ADD' : 'Add More'}</button>
+                        <button onClick={() => { /* quick upsell: suggested combo */ }} style={{ background: 'transparent', border: '1px solid '+C.borderLight, padding: '8px 12px', borderRadius: 10 }}>Suggest Combo</button>
+                      </div>
+                      <div>
+                        {qty > 0 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1.5px solid ${C.emerald}`, borderRadius: 8, padding: '2px 8px' }}>
                             <button onClick={() => updateQty(item, -1)} style={{ color: C.emerald, fontWeight: 700, fontSize: 16, width: 24 }}>−</button>
-                            <span style={{ fontWeight: 700, color: C.emerald, width: 16, textAlign: 'center' }}>{qty}</span>
+                            <span style={{ fontWeight: 700, color: C.emerald, width: 20, textAlign: 'center' }}>{qty}</span>
                             <button onClick={() => updateQty(item, 1)} style={{ color: C.emerald, fontWeight: 700, fontSize: 16, width: 24 }}>+</button>
                           </div>
                         )}
