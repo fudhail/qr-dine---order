@@ -20,7 +20,7 @@ const IMAGE_PRESETS = [
   { name: 'Premium Coffee', url: 'https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=400&q=80' },
 ];
 
-export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills, setRoomBills, socketConnected }) => {
+export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills, setRoomBills, socketConnected, config = CONFIG }) => {
   const [activeSection, setActiveSection] = useState('dashboard');
   const [selectedRoom, setSelectedRoom] = useState('');
   const [showAddChargeModal, setShowAddChargeModal] = useState(false);
@@ -62,7 +62,7 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
   }, [roomBills, selectedRoom]);
 
   // Operational metrics
-  const isHotel = CONFIG.deploymentMode !== 'TABLE_DINING';
+  const isHotel = config?.deploymentMode !== 'TABLE_DINING';
   const locationLabel = isHotel ? 'Room' : 'Table';
 
   // Calculate bill totals
@@ -213,7 +213,7 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
             <LayoutDashboard size={26} color={C.brassLight} />
           </div>
           <div>
-            <h1 className="serif" style={{ fontSize: 20, color: C.brassLight, fontWeight: 700, margin: 0, lineHeight: 1.2, letterSpacing: 0.5 }}>{CONFIG.shortName}</h1>
+            <h1 className="serif" style={{ fontSize: 20, color: C.brassLight, fontWeight: 700, margin: 0, lineHeight: 1.2, letterSpacing: 0.5 }}>{config?.shortName}</h1>
             <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4, fontWeight: 600, letterSpacing: 1.5, textTransform: 'uppercase' }}>Console</div>
           </div>
         </div>
@@ -1234,8 +1234,8 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
           >
              {/* Invoice Header */}
              <div style={{ textAlign: 'center', borderBottom: `2.5px solid ${C.text}`, paddingBottom: 24, marginBottom: 32 }}>
-                <h2 className="serif" style={{ fontSize: 30, fontWeight: 800, margin: 0, color: C.emerald }}>{CONFIG.hotelName.toUpperCase()}</h2>
-                <p style={{ fontSize: 13, color: C.textSub, marginTop: 6, fontWeight: 500 }}>{CONFIG.address}</p>
+                <h2 className="serif" style={{ fontSize: 30, fontWeight: 800, margin: 0, color: C.emerald }}>{config?.hotelName?.toUpperCase()}</h2>
+                <p style={{ fontSize: 13, color: C.textSub, marginTop: 6, fontWeight: 500 }}>{config?.address}</p>
                 <div style={{ marginTop: 16, display: 'inline-block', border: `1.5px solid ${C.text}`, padding: '4px 18px', fontWeight: 800, fontSize: 11, letterSpacing: 2, borderRadius: 4 }}>TAX INVOICE</div>
              </div>
 
@@ -1293,7 +1293,7 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
 
              {/* Footer Sign-off */}
              <div style={{ textAlign: 'center', color: C.textMuted, fontSize: 12.5, fontStyle: 'italic', marginTop: 40, borderTop: `1px solid ${C.borderLight}`, paddingTop: 24 }}>
-               Thank you for dining with {CONFIG.shortName}! 🙏<br/>
+               Thank you for dining with {config?.shortName}! 🙏<br/>
                <span style={{ fontSize: 10, textTransform: 'uppercase', fontStyle: 'normal', letterSpacing: 0.5, marginTop: 4, display: 'inline-block' }}>Have a pleasant & safe journey</span>
              </div>
 

@@ -105,7 +105,7 @@ const getItemMeta = (item) => {
   return { rating, time: `${time} min`, calories: `${calories} kcal` };
 };
 
-export const GuestApp = ({ menuItems, orders, setOrders, socketConnected }) => {
+export const GuestApp = ({ menuItems, orders, setOrders, socketConnected, config = CONFIG }) => {
   // Inject Premium Google Fonts
   useEffect(() => {
     const link = document.createElement('link');
@@ -140,8 +140,8 @@ export const GuestApp = ({ menuItems, orders, setOrders, socketConnected }) => {
 
   // Location States (Automatically set from URL / Scanned QR parameters)
   const [serviceType, setServiceType] = useState('ROOM'); // 'ROOM' | 'TABLE'
-  const [roomNumber, setRoomNumber] = useState(CONFIG.defaultRoom);
-  const [tableNumber, setTableNumber] = useState(CONFIG.defaultTable);
+  const [roomNumber, setRoomNumber] = useState(config?.defaultRoom || '101');
+  const [tableNumber, setTableNumber] = useState(config?.defaultTable || '1');
 
   // Parse location parameters from scanned QR url
   useEffect(() => {
@@ -149,13 +149,15 @@ export const GuestApp = ({ menuItems, orders, setOrders, socketConnected }) => {
     const urlRoom = params.get('room');
     const urlTable = params.get('table');
 
-    if (CONFIG.deploymentMode === 'ROOM_SERVICE') {
+    if (config?.deploymentMode === 'ROOM_SERVICE') {
       setServiceType('ROOM');
       if (urlRoom) setRoomNumber(urlRoom);
-    } else if (CONFIG.deploymentMode === 'TABLE_DINING') {
+      else setRoomNumber(config?.defaultRoom || '101');
+    } else if (config?.deploymentMode === 'TABLE_DINING') {
       setServiceType('TABLE');
       if (urlTable) setTableNumber(urlTable);
       else if (urlRoom) setTableNumber(urlRoom);
+      else setTableNumber(config?.defaultTable || '1');
     } else {
       // AUTO mode: detect based on URL search query parameters
       if (urlTable) {
@@ -167,9 +169,11 @@ export const GuestApp = ({ menuItems, orders, setOrders, socketConnected }) => {
       } else {
         // Direct browser entry fallback
         setServiceType('ROOM');
+        setRoomNumber(config?.defaultRoom || '101');
+        setTableNumber(config?.defaultTable || '1');
       }
     }
-  }, []);
+  }, [config]);
 
   // Search and Customizations
   const [searchQuery, setSearchQuery] = useState('');
@@ -356,7 +360,7 @@ export const GuestApp = ({ menuItems, orders, setOrders, socketConnected }) => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <h1 className="serif" style={{ color: C.emerald, fontSize: 20, margin: 0, fontWeight: 800 }}>{CONFIG.shortName}</h1>
+                  <h1 className="serif" style={{ color: C.emerald, fontSize: 20, margin: 0, fontWeight: 800 }}>{config?.shortName}</h1>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: socketConnected ? '#10B981' : C.danger, boxShadow: socketConnected ? '0 0 8px #10B981' : 'none' }}></div>
                 </div>
                 
@@ -554,7 +558,17 @@ export const GuestApp = ({ menuItems, orders, setOrders, socketConnected }) => {
                       const qty = getQty(item.id);
                       return (
                         <div key={idx} style={{ minWidth: 200, maxWidth: 200, display: 'flex', cursor: 'pointer' }} onClick={() => setSelectedItem(item)}>
-                          <Card style={{ padding: 0, width: '100%', position: 'relative', overflow: 'hidden', borderRadius: 20, border: 'none', boxShadow: '0 4px 16px rgba(15,27,43,0.03)' }}>
+                          <Card style={{ 
+                            padding: 0, 
+                            width: '100%', 
+                            position: 'relative', 
+                            overflow: 'hidden', 
+                            borderRadius: 20, 
+                            border: qty > 0 ? `1.5px solid ${C.brass}` : '1px solid rgba(0, 0, 0, 0.03)', 
+                            boxShadow: qty > 0 ? `0 8px 24px ${C.brass}15` : '0 4px 16px rgba(15,27,43,0.03)',
+                            background: qty > 0 ? `${C.brass}05` : C.white,
+                            transition: 'all 0.2s'
+                          }}>
                             <div style={{ height: 120, position: 'relative', background: C.borderLight }}>
                               {item.image ? (
                                 <img src={item.image} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -639,10 +653,12 @@ export const GuestApp = ({ menuItems, orders, setOrders, socketConnected }) => {
                         boxSizing: 'border-box', 
                         animationDelay: `${idx * 0.04}s`, 
                         borderRadius: 20,
-                        border: isTimingHighlight ? `1.5px solid ${C.brass}45` : '1px solid rgba(0, 0, 0, 0.03)',
-                        boxShadow: isTimingHighlight ? `0 8px 24px ${C.brass}08` : 'none',
+                        border: qty > 0 ? `1.5px solid ${C.brass}` : (isTimingHighlight ? `1.5px solid ${C.brass}45` : '1px solid rgba(0, 0, 0, 0.03)'),
+                        boxShadow: qty > 0 ? `0 8px 24px ${C.brass}15` : (isTimingHighlight ? `0 8px 24px ${C.brass}08` : 'none'),
+                        background: qty > 0 ? `${C.brass}05` : C.white,
                         cursor: 'pointer',
-                        position: 'relative'
+                        position: 'relative',
+                        transition: 'all 0.2s'
                       }} 
                       className="animate-fade-in card-hover"
                     >
@@ -1084,7 +1100,7 @@ export const GuestApp = ({ menuItems, orders, setOrders, socketConnected }) => {
           <h3 style={{ fontSize: 16, fontWeight: 800, color: C.text, margin: '0 0 16px 0' }}>Useful Information</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {[
-              { title: '📶 High-Speed Wi-Fi', desc: `Network: ${CONFIG.shortName}_Guest · Password: ${CONFIG.shortName.toLowerCase()}2026`, copyText: `${CONFIG.shortName.toLowerCase()}2026` },
+              { title: '📶 High-Speed Wi-Fi', desc: `Network: ${config?.shortName}_Guest · Password: ${config?.shortName?.toLowerCase()}2026`, copyText: `${config?.shortName?.toLowerCase()}2026` },
               { title: '🍳 Restaurant Timings', desc: 'Breakfast: 6:30 AM - 10:30 AM · Dinner: 7:00 PM - 11:00 PM' },
               { title: '🏊 Swimming Pool & Gym', desc: 'Located on 4th Floor · Open 6:00 AM - 10:00 PM' },
               { title: '🔑 Express Check-out', desc: 'Standard check-out time is 12:00 PM. Dial reception to request a late checkout.' }

@@ -6,7 +6,7 @@ import { VegDot } from '../../components/ui/VegDot';
 import { ClockWidget } from '../../components/ui/ClockWidget';
 import { CONFIG } from '../../config';
 
-export const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketConnected }) => {
+export const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketConnected, config = CONFIG }) => {
   const [activeTab, setActiveTab] = useState('queue');
   const [selectedOrderId, setSelectedOrderId] = useState(null);
 
@@ -208,7 +208,7 @@ export const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketC
           <div style={{ background: C.brassLight, padding: 8, borderRadius: 8 }}><ChefHat size={24} color={C.brass} /></div>
           <div>
             <h1 className="serif" style={{ fontSize: 20, color: C.emerald, margin: 0 }}>Kitchen Display System</h1>
-            <p style={{ fontSize: 13, color: C.textSub, marginTop: 2 }}>{CONFIG.hotelName}</p>
+            <p style={{ fontSize: 13, color: C.textSub, marginTop: 2 }}>{config?.hotelName}</p>
           </div>
         </div>
         
