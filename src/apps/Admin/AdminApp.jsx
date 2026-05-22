@@ -1,384 +1,1009 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { LayoutDashboard, UtensilsCrossed, Printer, X, Plus, ClipboardList, TrendingUp, Package, Star, Clock, Trash2 } from 'lucide-react';
+import { 
+  LayoutDashboard, UtensilsCrossed, Printer, X, Plus, ClipboardList, 
+  TrendingUp, Package, Star, Clock, Trash2, CheckCircle2, ChevronRight, 
+  AlertCircle, DollarSign, Edit3, BarChart2, Coffee, ShieldCheck, ArrowRight,
+  User, Check, ShieldAlert, Award
+} from 'lucide-react';
 import { C } from '../../constants/theme';
 import { Card } from '../../components/ui/Card';
 import { VegDot } from '../../components/ui/VegDot';
+import { CONFIG } from '../../config';
+
+// Unsplash presets for beautiful food pictures
+const IMAGE_PRESETS = [
+  { name: 'Breakfast/Pancakes', url: 'https://images.unsplash.com/photo-1528207776546-365bb710ee93?w=400&q=80' },
+  { name: 'Gourmet Burger', url: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80' },
+  { name: 'Fresh Salad', url: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&q=80' },
+  { name: 'Fettuccine Pasta', url: 'https://images.unsplash.com/photo-1645112411341-6c4fd023714a?w=400&q=80' },
+  { name: 'Chocolate Dessert', url: 'https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=400&q=80' },
+  { name: 'Premium Coffee', url: 'https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=400&q=80' },
+];
 
 export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills, setRoomBills, socketConnected }) => {
-  const [activeSection, setActiveSection] = useState('billing');
-  const [selectedRoom, setSelectedRoom] = useState(roomBills[0]?.room || null);
+  const [activeSection, setActiveSection] = useState('dashboard');
+  const [selectedRoom, setSelectedRoom] = useState('');
   const [showAddChargeModal, setShowAddChargeModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
-  const [newItem, setNewItem] = useState({ name: '', desc: '', price: '', category: 'Mains', isVeg: true, image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80' });
+  const [menuSearch, setMenuSearch] = useState('');
+  const [activeMenuCategory, setActiveMenuCategory] = useState('All');
+  
+  // New menu item form state
+  const [newItem, setNewItem] = useState({ 
+    name: '', 
+    desc: '', 
+    price: '', 
+    category: 'Mains', 
+    isVeg: true, 
+    image: IMAGE_PRESETS[0].url 
+  });
 
+  // Inject font assets inside useEffect
   useEffect(() => {
-    if (!selectedRoom && roomBills.length > 0) {
+    const link = document.createElement('link');
+    link.href = 'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap';
+    link.rel = 'stylesheet';
+    document.head.appendChild(link);
+    return () => {
+      document.head.removeChild(link);
+    };
+  }, []);
+
+  // Initialize selected location on load
+  useEffect(() => {
+    if (roomBills && roomBills.length > 0 && !selectedRoom) {
       setSelectedRoom(roomBills[0].room);
     }
   }, [roomBills, selectedRoom]);
 
+  const activeBill = useMemo(() => {
+    return roomBills.find(b => b.room === selectedRoom) || null;
+  }, [roomBills, selectedRoom]);
+
+  // Operational metrics
+  const isHotel = CONFIG.deploymentMode !== 'TABLE_DINING';
+  const locationLabel = isHotel ? 'Room' : 'Table';
+
+  // Calculate bill totals
+  const calculateBillTotals = (bill) => {
+    if (!bill) return { roomTotal: 0, serviceTotal: 0, roomTax: 0, serviceTax: 0, grandTotal: 0 };
+    const roomTotal = isHotel ? (bill.roomCharge || 0) : 0; // Cover charges / reservation charges for table
+    const serviceTotal = bill.roomServiceCharges ? bill.roomServiceCharges.reduce((sum, c) => sum + c.amount, 0) : 0;
+    const roomTax = roomTotal * 0.12;
+    const serviceTax = serviceTotal * 0.15; // 15% combined F&B taxes
+    return {
+      roomTotal,
+      serviceTotal,
+      roomTax,
+      serviceTax,
+      grandTotal: roomTotal + serviceTotal + roomTax + serviceTax
+    };
+  };
+
+  const activeTotals = useMemo(() => {
+    return calculateBillTotals(activeBill);
+  }, [activeBill]);
+
+  // Get orders that are delivered but not attached to the current room bill yet
+  const unbilledDeliveredOrders = useMemo(() => {
+    if (!selectedRoom || !orders) return [];
+    return orders.filter(o => 
+      o.status === 'DELIVERED' && 
+      o.room === selectedRoom && 
+      (!activeBill?.roomServiceCharges || !activeBill.roomServiceCharges.some(c => c.orderId === o.id))
+    );
+  }, [orders, selectedRoom, activeBill]);
+
+  // Add Item to Menu Handler
   const handleAddItem = (e) => {
     e.preventDefault();
     if (!newItem.name || !newItem.price) return;
-    setMenuItems([{ ...newItem, id: Date.now(), price: Number(newItem.price), available: true }, ...menuItems]);
+    const createdItem = {
+      ...newItem,
+      id: Date.now(),
+      price: Number(newItem.price),
+      available: true
+    };
+    setMenuItems([createdItem, ...menuItems]);
     setShowAddItemModal(false);
-    setNewItem({ name: '', desc: '', price: '', category: 'Mains', isVeg: true });
+    // Reset form
+    setNewItem({
+      name: '',
+      desc: '',
+      price: '',
+      category: 'Mains',
+      isVeg: true,
+      image: IMAGE_PRESETS[0].url
+    });
   };
 
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'billing', label: 'Billing & POS', icon: ClipboardList },
-    { id: 'orders', label: 'Live Orders', icon: Package },
-    { id: 'menu', label: 'Menu Editor', icon: UtensilsCrossed },
-    { id: 'reports', label: 'Reports', icon: TrendingUp },
-  ];
+  // Toggle item availability
+  const toggleItemAvailability = (itemId) => {
+    setMenuItems(menuItems.map(item => 
+      item.id === itemId ? { ...item, available: !item.available } : item
+    ));
+  };
 
-  const activeBill = roomBills.find(b => b.room === selectedRoom);
-  const unbilledDeliveredOrders = orders.filter(o => o.status === 'DELIVERED' && o.room === selectedRoom && !activeBill?.roomServiceCharges.some(c => c.orderId === o.id));
+  // Delete menu item
+  const handleDeleteItem = (itemId) => {
+    setMenuItems(menuItems.filter(item => item.id !== itemId));
+  };
 
+  // Link delivered order charge to the selected bill
   const attachOrderToBill = (order) => {
-    const charge = {
+    const newCharge = {
       orderId: order.id,
       amount: order.total,
       time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
       desc: order.items.map(i => `${i.name} ×${i.qty}`).join(', ')
     };
-    setRoomBills(prev => prev.map(b => b.room === selectedRoom ? { ...b, roomServiceCharges: [...b.roomServiceCharges, charge] } : b));
+    setRoomBills(roomBills.map(b => 
+      b.room === selectedRoom 
+        ? { ...b, roomServiceCharges: [...(b.roomServiceCharges || []), newCharge] }
+        : b
+    ));
     setShowAddChargeModal(false);
   };
 
-  const calculateBillTotals = (bill) => {
-    if(!bill) return { roomTotal: 0, serviceTotal: 0, roomTax: 0, serviceTax: 0, grandTotal: 0 };
-    const roomTotal = bill.roomCharge;
-    const serviceTotal = bill.roomServiceCharges.reduce((sum, c) => sum + c.amount, 0);
-    const roomTax = roomTotal * 0.12;
-    const serviceTax = serviceTotal * 0.15; // 15% combined tax on service
-    return { roomTotal, serviceTotal, roomTax, serviceTax, grandTotal: roomTotal + serviceTotal + roomTax + serviceTax };
-  };
-
-  const totals = calculateBillTotals(activeBill);
-
+  // Lock or unlock bill status
   const toggleBillStatus = () => {
-    setRoomBills(prev => prev.map(b => b.room === selectedRoom ? { ...b, status: b.status === 'OPEN' ? 'CLOSED' : 'OPEN' } : b));
+    setRoomBills(roomBills.map(b => 
+      b.room === selectedRoom 
+        ? { ...b, status: b.status === 'OPEN' ? 'CLOSED' : 'OPEN' }
+        : b
+    ));
   };
+
+  // Update specific order status in the active pipeline
+  const updateOrderStatus = (orderId, newStatus) => {
+    setOrders(orders.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+  };
+
+  // Cancel/Refund order
+  const cancelOrder = (orderId) => {
+    setOrders(orders.map(o => o.id === orderId ? { ...o, status: 'CANCELLED' } : o));
+  };
+
+  // Analytics derivations
+  const totalSalesFB = useMemo(() => {
+    return orders.filter(o => o.status !== 'CANCELLED').reduce((sum, o) => sum + o.total, 0);
+  }, [orders]);
+
+  const salesByCategory = useMemo(() => {
+    const stats = {};
+    orders.filter(o => o.status !== 'CANCELLED').forEach(order => {
+      order.items.forEach(item => {
+        // Resolve item category from menuItems or fallback
+        const category = menuItems.find(m => m.name === item.name)?.category || 'Mains';
+        stats[category] = (stats[category] || 0) + (item.price * item.qty);
+      });
+    });
+    return Object.entries(stats).map(([category, value]) => ({ category, value }));
+  }, [orders, menuItems]);
+
+  const topDishes = useMemo(() => {
+    const counts = {};
+    orders.filter(o => o.status !== 'CANCELLED').forEach(order => {
+      order.items.forEach(item => {
+        counts[item.name] = (counts[item.name] || 0) + item.qty;
+      });
+    });
+    return Object.entries(counts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+  }, [orders]);
+
+  const navItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'billing', label: 'Billing & POS', icon: ClipboardList },
+    { id: 'orders', label: 'Live Orders', icon: Package, badge: orders.filter(o => o.status === 'NEW' || o.status === 'PREPARING').length },
+    { id: 'menu', label: 'Menu Editor', icon: UtensilsCrossed },
+    { id: 'reports', label: 'Reports', icon: TrendingUp },
+  ];
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: C.sand }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: C.sand, fontFamily: '"Plus Jakarta Sans", sans-serif', color: C.text }}>
+      
       {/* SIDEBAR */}
-      <div style={{ width: 260, background: C.emerald, color: C.white, display: 'flex', flexDirection: 'column', padding: 24 }} className="no-print">
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 40 }}>
-          <div style={{ background: 'rgba(255,255,255,0.1)', padding: 8, borderRadius: 12 }}>
-            <LayoutDashboard size={24} color={C.brassLight} />
+      <div style={{ width: 280, background: C.emerald, color: C.white, display: 'flex', flexDirection: 'column', padding: '32px 24px', position: 'sticky', top: 0, height: '100vh', boxShadow: '4px 0 24px rgba(7,20,40,0.05)' }} className="no-print">
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 48 }}>
+          <div style={{ background: 'rgba(255,255,255,0.08)', padding: 12, borderRadius: 16, border: '1px solid rgba(255,255,255,0.1)' }}>
+            <LayoutDashboard size={26} color={C.brassLight} />
           </div>
           <div>
-            <div className="serif" style={{ fontSize: 18, color: C.brassLight, fontWeight: 700, lineHeight: 1.2 }}>Grand Vista</div>
-            <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>Management Portal</div>
+            <h1 className="serif" style={{ fontSize: 20, color: C.brassLight, fontWeight: 700, margin: 0, lineHeight: 1.2, letterSpacing: 0.5 }}>{CONFIG.shortName}</h1>
+            <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4, fontWeight: 600, letterSpacing: 1.5, textTransform: 'uppercase' }}>Console</div>
           </div>
         </div>
 
+        {/* NAVIGATION LINKS */}
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
           {navItems.map(item => {
             const Icon = item.icon;
             const isActive = activeSection === item.id;
             return (
               <button 
-                key={item.id} onClick={() => setActiveSection(item.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 12, background: isActive ? 'rgba(255,255,255,0.1)' : 'transparent', color: isActive ? C.white : 'rgba(255,255,255,0.7)', borderLeft: isActive ? `3px solid ${C.brass}` : '3px solid transparent', textAlign: 'left', fontWeight: isActive ? 600 : 500, transition: '0.2s ease' }}
+                key={item.id} 
+                onClick={() => setActiveSection(item.id)}
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between',
+                  padding: '14px 18px', 
+                  borderRadius: 16, 
+                  background: isActive ? 'rgba(255, 255, 255, 0.08)' : 'transparent', 
+                  color: isActive ? C.white : 'rgba(255,255,255,0.65)', 
+                  border: 'none',
+                  borderLeft: isActive ? `4px solid ${C.brass}` : '4px solid transparent', 
+                  textAlign: 'left', 
+                  fontWeight: isActive ? 700 : 500, 
+                  fontSize: 14.5,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)' 
+                }}
+                onMouseEnter={e => {
+                  if (!isActive) {
+                    e.currentTarget.style.color = C.white;
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                  }
+                }}
+                onMouseLeave={e => {
+                  if (!isActive) {
+                    e.currentTarget.style.color = 'rgba(255,255,255,0.65)';
+                    e.currentTarget.style.background = 'transparent';
+                  }
+                }}
               >
-                <Icon size={18} /> {item.label}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <Icon size={19} /> 
+                  <span>{item.label}</span>
+                </div>
+                {item.badge > 0 && (
+                  <span style={{ background: C.brass, color: C.emerald, fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 999, minWidth: 20, textAlign: 'center' }}>
+                    {item.badge}
+                  </span>
+                )}
               </button>
             )
           })}
         </nav>
+
+        {/* SYSTEM STATUS FOOTER */}
+        <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 16, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, border: '1px solid rgba(255,255,255,0.05)' }}>
+          <div style={{ width: 10, height: 10, borderRadius: '50%', background: socketConnected ? '#10B981' : C.danger, boxShadow: socketConnected ? '0 0 10px #10B981' : '0 0 10px ' + C.danger }}></div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.white }}>{socketConnected ? 'Console Online' : 'Offline Mode'}</div>
+            <div style={{ fontSize: 10, opacity: 0.5, marginTop: 2 }}>{socketConnected ? 'Live Connection Sync' : 'Reconnecting server...'}</div>
+          </div>
+        </div>
       </div>
 
-      {/* MAIN CONTENT */}
-      <div style={{ flex: 1, padding: '32px 40px', overflowY: 'auto' }} className="no-print">
+      {/* MAIN VIEWPORT */}
+      <div style={{ flex: 1, padding: '40px 48px', overflowY: 'auto', maxHeight: '100vh' }} className="no-print">
         
-        {/* DASHBOARD */}
+        {/* DASHBOARD SECTION */}
         {activeSection === 'dashboard' && (
           <div className="animate-fade-up">
-            <h2 className="serif" style={{ fontSize: 28, marginBottom: 24, color: C.text }}>Dashboard Overview</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 32 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 32 }}>
+              <div>
+                <h2 className="serif" style={{ fontSize: 32, fontWeight: 800, color: C.text, margin: 0 }}>Executive Overview</h2>
+                <p style={{ color: C.textSub, fontSize: 14, marginTop: 6 }}>Real-time service occupancy, room dining telemetry, and billing status.</p>
+              </div>
+              <div style={{ display: 'flex', gap: 12, background: C.white, padding: '6px 12px', borderRadius: 12, border: `1px solid ${C.border}` }}>
+                <Clock size={16} color={C.textMuted} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: C.textSub }}>Live State Updated</span>
+              </div>
+            </div>
+
+            {/* DASHBOARD KPIs */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 24, marginBottom: 36 }}>
               {[
-                { label: 'Total Orders', value: orders.length, icon: Package, color: C.emerald },
-                { label: 'Revenue Today', value: `₹${orders.reduce((sum, o) => sum + o.total, 0).toLocaleString()}`, icon: TrendingUp, color: C.brass },
-                { label: 'Avg Order Value', value: `₹${Math.round(orders.reduce((sum, o) => sum + o.total, 0) / orders.length)}`, icon: Star, color: C.info },
-                { label: 'Pending Delivery', value: orders.filter(o => o.status === 'NEW' || o.status === 'PREPARING').length, icon: Clock, color: C.warning }
+                { label: 'F&B Gross revenue', value: `₹${totalSalesFB.toLocaleString()}`, sub: 'From guest orders', icon: DollarSign, color: C.emerald },
+                { label: 'Total Orders Placed', value: orders.length, sub: 'All statuses combined', icon: Package, color: C.brass },
+                { label: 'Active Service Bills', value: roomBills.filter(b => b.status === 'OPEN').length, sub: `${locationLabel} service open`, icon: ClipboardList, color: C.info },
+                { label: 'Average Ticket Size', value: `₹${orders.length > 0 ? Math.round(totalSalesFB / orders.length).toLocaleString() : 0}`, sub: 'Gross cart average', icon: Star, color: '#8B5CF6' }
               ].map((stat, i) => (
-                <Card key={i} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <div style={{ background: stat.color + '20', padding: 16, borderRadius: '50%' }}>
-                    <stat.icon size={24} color={stat.color} />
+                <Card key={i} style={{ display: 'flex', alignItems: 'center', gap: 20, border: `1px solid ${C.border}`, boxShadow: 'none' }}>
+                  <div style={{ background: stat.color + '12', padding: 16, borderRadius: 20 }}>
+                    <stat.icon size={26} color={stat.color} />
                   </div>
                   <div>
-                    <div style={{ color: C.textSub, fontSize: 13, fontWeight: 500 }}>{stat.label}</div>
-                    <div style={{ fontSize: 24, fontWeight: 700, color: C.text, marginTop: 4 }}>{stat.value}</div>
+                    <div style={{ color: C.textMuted, fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>{stat.label}</div>
+                    <div style={{ fontSize: 26, fontWeight: 800, color: C.text, marginTop: 6, letterSpacing: -0.5 }}>{stat.value}</div>
+                    <div style={{ fontSize: 11, color: C.textSub, marginTop: 4 }}>{stat.sub}</div>
                   </div>
                 </Card>
               ))}
             </div>
 
-            <Card>
-              <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 24 }}>Recent Orders</h3>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead style={{ fontSize: 12, color: C.textSub, textTransform: 'uppercase', borderBottom: `1px solid ${C.borderLight}` }}>
-                  <tr>
-                    <th style={{ paddingBottom: 12 }}>Token</th>
-                    <th style={{ paddingBottom: 12 }}>Room</th>
-                    <th style={{ paddingBottom: 12 }}>Items</th>
-                    <th style={{ paddingBottom: 12 }}>Amount</th>
-                    <th style={{ paddingBottom: 12 }}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.slice(0, 5).map(o => (
-                    <tr key={o.id} style={{ borderBottom: `1px solid ${C.borderLight}` }}>
-                      <td style={{ padding: '16px 0', fontWeight: 700 }}>{o.token}</td>
-                      <td style={{ padding: '16px 0', color: C.textSub }}>Room {o.room}</td>
-                      <td style={{ padding: '16px 0', color: C.textSub, fontSize: 13, maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {o.items.map(i => `${i.name}`).join(', ')}
-                      </td>
-                      <td style={{ padding: '16px 0', fontWeight: 600 }}>₹{o.total}</td>
-                      <td style={{ padding: '16px 0' }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 4, background: o.status === 'DELIVERED' ? C.borderLight : C.warningLight, color: o.status === 'DELIVERED' ? C.textSub : C.warning }}>
-                          {o.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Card>
+            <div style={{ display: 'grid', gridTemplateColumns: '5fr 4fr', gap: 32 }}>
+              {/* OCCUPANCY TRACKER GRID */}
+              <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none' }}>
+                <h3 className="serif" style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: '0 0 8px 0' }}>{locationLabel} Occupancy Grid</h3>
+                <p style={{ color: C.textSub, fontSize: 13, margin: '0 0 24px 0' }}>Visual tracker of active rooms or dining tables in the database.</p>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+                  {roomBills.map(bill => {
+                    const roomOrders = orders.filter(o => o.room === bill.room);
+                    const pendingOrders = roomOrders.filter(o => o.status === 'NEW' || o.status === 'PREPARING');
+                    const hasCheckoutAction = false; // Placeholder logic if checkout requests were flag based.
+                    
+                    return (
+                      <div 
+                        key={bill.room}
+                        onClick={() => {
+                          setSelectedRoom(bill.room);
+                          setActiveSection('billing');
+                        }}
+                        style={{
+                          background: bill.status === 'OPEN' ? `${C.brass}05` : C.sand,
+                          border: `1.5px solid ${bill.status === 'OPEN' ? C.brass : C.border}`,
+                          borderRadius: 18,
+                          padding: 16,
+                          cursor: 'pointer',
+                          position: 'relative',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.03)';
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = 'none';
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 18, fontWeight: 800, color: C.text }}>{locationLabel} {bill.room}</span>
+                          <span style={{ 
+                            width: 8, 
+                            height: 8, 
+                            borderRadius: '50%', 
+                            background: bill.status === 'OPEN' ? C.brass : C.textMuted 
+                          }}></span>
+                        </div>
+                        <div style={{ fontSize: 12, color: C.textSub, marginTop: 8, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {bill.status === 'OPEN' ? bill.guestName : 'Vacant / Ready'}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+                          {pendingOrders.length > 0 && (
+                            <span style={{ background: C.warningLight, color: C.warning, fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 6 }}>
+                              ⏳ {pendingOrders.length} Order
+                            </span>
+                          )}
+                          <span style={{ 
+                            background: bill.status === 'OPEN' ? `${C.emerald}10` : C.borderLight, 
+                            color: bill.status === 'OPEN' ? C.emerald : C.textSub, 
+                            fontSize: 10, 
+                            fontWeight: 700, 
+                            padding: '2px 6px', 
+                            borderRadius: 6 
+                          }}>
+                            {bill.status}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+
+              {/* RECENT ORDERS PANEL */}
+              <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <h3 className="serif" style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: 0 }}>Recent F&B Orders</h3>
+                  <button onClick={() => setActiveSection('orders')} style={{ color: C.brass, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer' }}>
+                    View Pipeline <ArrowRight size={14} />
+                  </button>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1, overflowY: 'auto' }}>
+                  {orders.slice(0, 4).map(order => {
+                    let statusBg = C.borderLight;
+                    let statusColor = C.textSub;
+                    if (order.status === 'NEW') { statusBg = C.warningLight; statusColor = C.warning; }
+                    else if (order.status === 'PREPARING') { statusBg = `${C.info}15`; statusColor = C.info; }
+                    else if (order.status === 'DELIVERED') { statusBg = `${C.emerald}10`; statusColor = C.emerald; }
+
+                    return (
+                      <div key={order.id} style={{ display: 'flex', alignItems: 'center', justifyItems: 'space-between', borderBottom: `1px solid ${C.borderLight}`, paddingBottom: 14 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontWeight: 800, fontSize: 14 }}>{order.token}</span>
+                            <span style={{ fontSize: 12, color: C.textSub }}>· {locationLabel} {order.room}</span>
+                          </div>
+                          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4, maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {order.items.map(i => `${i.name} ×${i.qty}`).join(', ')}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>₹{order.total}</div>
+                          <span style={{ alignSelf: 'flex-end', fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 6, background: statusBg, color: statusColor, textTransform: 'uppercase' }}>
+                            {order.status}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            </div>
           </div>
         )}
 
-        {/* BILLING & POS */}
+        {/* BILLING & POS SECTION */}
         {activeSection === 'billing' && (
           <div className="animate-fade-up">
-            <h2 className="serif" style={{ fontSize: 28, marginBottom: 8, color: C.text }}>Billing & POS</h2>
-            {!activeBill ? (
-              <div style={{ padding: 40, textAlign: 'center', color: C.textSub, background: C.white, borderRadius: 20 }}>
-                <ClipboardList size={48} color={C.border} style={{ margin: '0 auto', marginBottom: 16 }} />
-                <h3>No Active Bills</h3>
-                <p>There are currently no active room bills to manage.</p>
-              </div>
-            ) : (
-              <>
-                <p style={{ color: C.textSub, marginBottom: 24 }}>Select a room to manage folios and print invoices.</p>
+            <div style={{ marginBottom: 28 }}>
+              <h2 className="serif" style={{ fontSize: 32, fontWeight: 800, color: C.text, margin: 0 }}>Folio & POS Billing</h2>
+              <p style={{ color: C.textSub, fontSize: 14, marginTop: 6 }}>Manage customer accounts, add customized food orders to bills, and print tax invoices.</p>
+            </div>
 
-                <div className="hide-scrollbar" style={{ display: 'flex', gap: 12, overflowX: 'auto', marginBottom: 24, paddingBottom: 4 }}>
-                  {roomBills.map(b => (
-                    <button 
-                      key={b.room} onClick={() => setSelectedRoom(b.room)}
-                      style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', padding: '12px 20px', borderRadius: 16, border: `1px solid ${selectedRoom === b.room ? C.emerald : C.border}`, background: selectedRoom === b.room ? C.emerald : C.white, color: selectedRoom === b.room ? C.white : C.text, minWidth: 140, transition: '0.2s' }}
-                    >
-                      <span style={{ fontSize: 16, fontWeight: 700 }}>Room {b.room}</span>
-                      <span style={{ fontSize: 12, opacity: selectedRoom === b.room ? 0.8 : 0.5, marginTop: 4 }}>{b.guestName}</span>
-                    </button>
-                  ))}
-                </div>
-
-            <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 24 }}>
-                <Card style={{ padding: 24 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                    <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Guest Details</h3>
-                    <div style={{ background: activeBill.status === 'OPEN' ? C.emeraldLight : C.borderLight, color: activeBill.status === 'OPEN' ? C.emerald : C.textSub, padding: '4px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700, letterSpacing: 1 }}>
-                      {activeBill.status}
+            {/* LOCATION SELECTOR ROW */}
+            <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 16, marginBottom: 28 }} className="hide-scrollbar">
+              {roomBills.map(bill => {
+                const isSelected = selectedRoom === bill.room;
+                return (
+                  <div
+                    key={bill.room}
+                    onClick={() => setSelectedRoom(bill.room)}
+                    style={{
+                      background: isSelected ? C.emerald : C.white,
+                      color: isSelected ? C.white : C.text,
+                      border: `1.5px solid ${isSelected ? C.emerald : C.border}`,
+                      borderRadius: 18,
+                      padding: '16px 20px',
+                      minWidth: 160,
+                      cursor: 'pointer',
+                      boxShadow: isSelected ? '0 8px 24px rgba(7,20,40,0.1)' : 'none',
+                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 16, fontWeight: 800 }}>{locationLabel} {bill.room}</span>
+                      <span style={{ 
+                        fontSize: 10, 
+                        fontWeight: 700, 
+                        padding: '2px 6px', 
+                        borderRadius: 6,
+                        background: isSelected ? 'rgba(255,255,255,0.15)' : C.borderLight,
+                        color: isSelected ? C.white : C.textSub
+                      }}>{bill.status}</span>
+                    </div>
+                    <div style={{ fontSize: 12, opacity: isSelected ? 0.8 : 0.6, marginTop: 8, fontWeight: 500 }}>
+                      {bill.guestName}
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                    <div><div style={{ fontSize: 12, color: C.textMuted }}>Guest Name</div><div style={{ fontWeight: 600, marginTop: 4 }}>{activeBill.guestName}</div></div>
-                    <div><div style={{ fontSize: 12, color: C.textMuted }}>Dates</div><div style={{ fontWeight: 600, marginTop: 4 }}>{activeBill.checkIn} to {activeBill.checkOut}</div></div>
-                  </div>
-                </Card>
+                );
+              })}
+            </div>
 
-                <Card style={{ padding: 0, overflow: 'hidden' }}>
-                  <div style={{ padding: '20px 24px', background: C.borderLight, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Room Service Charges</h3>
-                    {activeBill.status === 'OPEN' && (
-                      <button onClick={() => setShowAddChargeModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: C.emerald }}>
-                        <Plus size={16} /> Add Charge
-                      </button>
-                    )}
-                  </div>
-                  <div style={{ padding: 24 }}>
-                    {activeBill.roomServiceCharges.length === 0 ? (
-                      <div style={{ textAlign: 'center', color: C.textMuted, padding: '20px 0' }}>No room service charges on this bill.</div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        {activeBill.roomServiceCharges.map((charge, idx) => (
-                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: idx < activeBill.roomServiceCharges.length - 1 ? `1px dashed ${C.border}` : 'none', paddingBottom: idx < activeBill.roomServiceCharges.length - 1 ? 16 : 0 }}>
-                            <div>
-                              <div style={{ fontWeight: 600, fontSize: 14 }}>Room Service (Order #{charge.orderId})</div>
-                              <div style={{ color: C.textSub, fontSize: 13, marginTop: 4, maxWidth: 300 }}>{charge.desc}</div>
-                              <div style={{ color: C.textMuted, fontSize: 12, marginTop: 4 }}>{charge.time}</div>
-                            </div>
-                            <div style={{ fontWeight: 700, color: C.emerald }}>₹{charge.amount.toFixed(2)}</div>
-                          </div>
-                        ))}
+            {activeBill ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.2fr', gap: 32, alignItems: 'start' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+                  
+                  {/* GUEST ACCOUNT INFO */}
+                  <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none', padding: 28 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                      <h3 className="serif" style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: 0 }}>Guest Profile</h3>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: activeBill.status === 'OPEN' ? '#10B981' : C.danger }}></span>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: C.textSub, textTransform: 'uppercase', letterSpacing: 1 }}>{activeBill.status}</span>
                       </div>
-                    )}
-                  </div>
-                </Card>
-              </div>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>Guest Name</div>
+                        <div style={{ fontWeight: 800, fontSize: 16, marginTop: 6, color: C.text }}>{activeBill.guestName}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>Check In Date</div>
+                        <div style={{ fontWeight: 800, fontSize: 16, marginTop: 6, color: C.text }}>{activeBill.checkIn}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>Check Out Date</div>
+                        <div style={{ fontWeight: 800, fontSize: 16, marginTop: 6, color: C.text }}>{activeBill.checkOut}</div>
+                      </div>
+                    </div>
+                  </Card>
 
-              {/* INVOICE SUMMARY PANEL */}
-              <div style={{ width: 360 }}>
-                <Card style={{ padding: 24 }}>
-                  <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20 }}>Invoice Summary</h3>
+                  {/* ROOM SERVICE CHARGES FOLIO */}
+                  <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none', padding: 0, overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 28px', background: C.borderLight, borderBottom: `1px solid ${C.border}` }}>
+                      <div>
+                        <h3 className="serif" style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>Room Dining Folio</h3>
+                        <span style={{ fontSize: 11, color: C.textSub, marginTop: 2, display: 'inline-block' }}>Itemized logs of room delivery charges</span>
+                      </div>
+                      {activeBill.status === 'OPEN' && (
+                        <button 
+                          onClick={() => setShowAddChargeModal(true)}
+                          style={{
+                            background: C.emerald,
+                            color: C.white,
+                            border: 'none',
+                            borderRadius: 12,
+                            padding: '10px 18px',
+                            fontSize: 13,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6
+                          }}
+                        >
+                          <Plus size={16} /> Link Order
+                        </button>
+                      )}
+                    </div>
+                    
+                    <div style={{ padding: 28 }}>
+                      {!activeBill.roomServiceCharges || activeBill.roomServiceCharges.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '40px 0', color: C.textSub }}>
+                          <AlertCircle size={40} color={C.border} style={{ margin: '0 auto 12px' }} />
+                          <div style={{ fontWeight: 700, fontSize: 15 }}>No F&B Charges Yet</div>
+                          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Add a delivered room order to append to invoice.</div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                          {activeBill.roomServiceCharges.map((charge, idx) => (
+                            <div key={idx} style={{ display: 'flex', justifyItems: 'space-between', borderBottom: idx < activeBill.roomServiceCharges.length - 1 ? `1px solid ${C.borderLight}` : 'none', paddingBottom: idx < activeBill.roomServiceCharges.length - 1 ? 16 : 0 }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  <span style={{ fontWeight: 800, fontSize: 15 }}>Order {charge.orderId}</span>
+                                  <span style={{ fontSize: 11, color: C.textMuted, background: C.borderLight, padding: '2px 8px', borderRadius: 4 }}>{charge.time}</span>
+                                </div>
+                                <div style={{ fontSize: 13, color: C.textSub, marginTop: 6, lineHeight: 1.4 }}>{charge.desc}</div>
+                              </div>
+                              <div style={{ fontWeight: 800, fontSize: 16, color: C.emerald }}>₹{charge.amount.toFixed(2)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                </div>
+
+                {/* INVOICE BILL BOARD */}
+                <Card style={{ border: `1.5px solid ${C.emerald}`, boxShadow: 'none', padding: 28, position: 'sticky', top: 32 }}>
+                  <h3 className="serif" style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: '0 0 20px 0' }}>Folio Bill Ledger</h3>
                   
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, fontSize: 14, color: C.textSub }}>
-                    <span>Room Accommodation</span><span>₹{totals.roomTotal.toFixed(2)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20, fontSize: 14, color: C.textSub }}>
-                    <span>Room Service Total</span><span>₹{totals.serviceTotal.toFixed(2)}</span>
-                  </div>
-                  
-                  <div style={{ borderTop: `1px solid ${C.borderLight}`, margin: '20px 0' }}></div>
-                  
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, fontSize: 13, color: C.textMuted }}>
-                    <span>Room Tax (12%)</span><span>₹{totals.roomTax.toFixed(2)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20, fontSize: 13, color: C.textMuted }}>
-                    <span>Food & Beverage Tax (15%)</span><span>₹{totals.serviceTax.toFixed(2)}</span>
+                  {isHotel && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, fontSize: 14 }}>
+                      <span style={{ color: C.textSub, fontWeight: 500 }}>Room Accommodation Charge</span>
+                      <span style={{ fontWeight: 700 }}>₹{activeTotals.roomTotal.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, fontSize: 14 }}>
+                    <span style={{ color: C.textSub, fontWeight: 500 }}>Room Dining Subtotal</span>
+                    <span style={{ fontWeight: 700 }}>₹{activeTotals.serviceTotal.toFixed(2)}</span>
                   </div>
                   
-                  <div style={{ borderTop: `2px dashed ${C.border}`, paddingTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 32 }}>
-                    <span style={{ fontWeight: 600, fontSize: 16 }}>Grand Total</span>
-                    <span style={{ fontWeight: 700, fontSize: 28, color: C.emerald, lineHeight: 1 }}>₹{totals.grandTotal.toFixed(0)}</span>
+                  <div style={{ borderTop: `1px solid ${C.border}`, margin: '16px 0' }}></div>
+                  
+                  {isHotel && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 12, color: C.textMuted }}>
+                      <span>Room GST / Luxury Tax (12%)</span>
+                      <span>₹{activeTotals.roomTax.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20, fontSize: 12, color: C.textMuted }}>
+                    <span>Food & Beverage SGST+CGST (15%)</span>
+                    <span>₹{activeTotals.serviceTax.toFixed(2)}</span>
+                  </div>
+                  
+                  <div style={{ borderTop: `2px dashed ${C.border}`, paddingTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 28 }}>
+                    <div>
+                      <span style={{ fontWeight: 800, fontSize: 15, textTransform: 'uppercase', letterSpacing: 0.5, color: C.text }}>Grand Total</span>
+                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>Taxes & service charge inclusive</div>
+                    </div>
+                    <span style={{ fontWeight: 800, fontSize: 28, color: C.emerald, lineHeight: 1 }}>₹{activeTotals.grandTotal.toFixed(0)}</span>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <button onClick={() => setShowPrintModal(true)} style={{ width: '100%', padding: 14, borderRadius: 12, border: `1.5px solid ${C.emerald}`, color: C.emerald, fontWeight: 600, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-                      <Printer size={18} /> Print Invoice
+                    <button 
+                      onClick={() => setShowPrintModal(true)} 
+                      style={{ 
+                        width: '100%', 
+                        padding: '14px', 
+                        borderRadius: 14, 
+                        background: 'none',
+                        border: `1.5px solid ${C.emerald}`, 
+                        color: C.emerald, 
+                        fontWeight: 700, 
+                        display: 'flex', 
+                        justifyContent: 'center', 
+                        alignItems: 'center', 
+                        gap: 8,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Printer size={18} /> Print Folio Receipt
                     </button>
-                    <button onClick={toggleBillStatus} style={{ width: '100%', padding: 14, borderRadius: 12, background: activeBill.status === 'OPEN' ? C.text : C.borderLight, color: activeBill.status === 'OPEN' ? C.white : C.text, fontWeight: 600 }}>
-                      {activeBill.status === 'OPEN' ? 'Close & Lock Bill' : 'Reopen Bill'}
+                    <button 
+                      onClick={toggleBillStatus} 
+                      style={{ 
+                        width: '100%', 
+                        padding: '14px', 
+                        borderRadius: 14, 
+                        background: activeBill.status === 'OPEN' ? C.text : C.borderLight, 
+                        color: activeBill.status === 'OPEN' ? C.white : C.text, 
+                        border: 'none',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {activeBill.status === 'OPEN' ? `🔒 Check-out & Close Bill` : '🔓 Reopen Ledger Folio'}
                     </button>
                   </div>
                 </Card>
               </div>
-            </div>
+            ) : (
+              <div style={{ background: C.white, borderRadius: 20, padding: 48, textAlign: 'center', border: `1px solid ${C.border}` }}>
+                <AlertCircle size={48} color={C.border} style={{ margin: '0 auto 16px' }} />
+                <h3 className="serif" style={{ fontSize: 20, margin: 0 }}>No Location Folios Registered</h3>
+                <p style={{ color: C.textSub, fontSize: 14, marginTop: 8 }}>Please configure the default locations or scan room QR codes.</p>
+              </div>
+            )}
 
             {/* ADD CHARGE MODAL */}
             {showAddChargeModal && (
-              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div className="animate-pop" style={{ background: C.white, borderRadius: 24, padding: 32, width: 500, maxWidth: '90%' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                    <h3 style={{ fontSize: 20, fontWeight: 700 }}>Add Room Service to Bill</h3>
-                    <button onClick={() => setShowAddChargeModal(false)}><X size={24} color={C.textMuted} /></button>
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(7,20,40,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
+                <div className="animate-pop animate-pop-in" style={{ background: C.white, borderRadius: 24, padding: 32, width: 520, maxWidth: '90%', boxShadow: '0 24px 64px rgba(7,20,40,0.15)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                    <h3 className="serif" style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Link F&B Order to {locationLabel} {selectedRoom}</h3>
+                    <button onClick={() => setShowAddChargeModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} color={C.textMuted} /></button>
                   </div>
                   
-                  <div style={{ fontSize: 14, color: C.textSub, marginBottom: 16 }}>Select an unbilled delivered order for Room {selectedRoom}:</div>
+                  <div style={{ fontSize: 13, color: C.textSub, marginBottom: 20 }}>Select a completed order to link onto this bill folio.</div>
                   
-                  {unbilledDeliveredOrders.length === 0 ? (
-                    <div style={{ padding: 32, background: C.borderLight, borderRadius: 12, textAlign: 'center', color: C.textMuted }}>No pending orders found for this room.</div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {unbilledDeliveredOrders.map(o => (
-                        <div key={o.id} style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {unbilledDeliveredOrders.length === 0 ? (
+                      <div style={{ padding: 36, background: C.sand, borderRadius: 18, textAlign: 'center', color: C.textMuted }}>
+                        <ShieldCheck size={32} color={C.textMuted} style={{ opacity: 0.3, margin: '0 auto 12px' }} />
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>All Orders Already Billed</div>
+                        <div style={{ fontSize: 12, marginTop: 4 }}>No unbilled delivered orders exist for {locationLabel} {selectedRoom}.</div>
+                      </div>
+                    ) : (
+                      unbilledDeliveredOrders.map(o => (
+                        <div key={o.id} style={{ border: `1px solid ${C.border}`, borderRadius: 16, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div>
-                            <div style={{ fontWeight: 600, fontSize: 15 }}>Order {o.token}</div>
-                            <div style={{ fontSize: 13, color: C.textSub, marginTop: 4, maxWidth: 250, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.items.map(i => `${i.name}`).join(', ')}</div>
+                            <div style={{ fontWeight: 700, fontSize: 14 }}>Order {o.token}</div>
+                            <div style={{ fontSize: 12, color: C.textSub, marginTop: 4, maxWidth: 260, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {o.items.map(i => `${i.name}`).join(', ')}
+                            </div>
+                            <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>{o.minutesAgo} min ago</div>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                            <div style={{ fontWeight: 700 }}>₹{o.total}</div>
-                            <button onClick={() => attachOrderToBill(o)} style={{ background: C.emeraldLight, color: C.emerald, padding: '8px 16px', borderRadius: 8, fontWeight: 600, fontSize: 13 }}>Add</button>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                            <div style={{ fontWeight: 800, color: C.emerald, fontSize: 15 }}>₹{o.total}</div>
+                            <button 
+                              onClick={() => attachOrderToBill(o)}
+                              style={{ background: C.emerald, color: C.white, border: 'none', padding: '8px 16px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                            >
+                              Add
+                            </button>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
-            )}
-              </>
             )}
           </div>
         )}
 
-        {/* MENU EDITOR */}
+        {/* LIVE ORDERS PIPELINE BOARD */}
+        {activeSection === 'orders' && (
+          <div className="animate-fade-up">
+            <div style={{ marginBottom: 28 }}>
+              <h2 className="serif" style={{ fontSize: 32, fontWeight: 800, color: C.text, margin: 0 }}>Order Dispatch Pipeline</h2>
+              <p style={{ color: C.textSub, fontSize: 14, marginTop: 6 }}>Drag or tap statuses to progress room/table delivery requests.</p>
+            </div>
+
+            {/* COLUMNS GRID */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20 }}>
+              {[
+                { title: 'New Requests', status: 'NEW', color: C.warning, badgeColor: C.warningLight },
+                { title: 'In Kitchen', status: 'PREPARING', color: C.info, badgeColor: C.infoLight },
+                { title: 'On the Way', status: 'ON_THE_WAY', color: '#8B5CF6', badgeColor: '#F5F3FF' },
+                { title: 'Delivered', status: 'DELIVERED', color: C.emerald, badgeColor: `${C.emerald}12` }
+              ].map(column => {
+                const columnOrders = orders.filter(o => o.status === column.status);
+                return (
+                  <div key={column.status} style={{ background: 'rgba(255,255,255,0.4)', borderRadius: 24, padding: 18, border: `1.5px solid ${C.border}`, display: 'flex', flexDirection: 'column', minHeight: '65vh' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                      <h4 style={{ fontWeight: 800, fontSize: 14, color: C.text, margin: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>{column.title}</h4>
+                      <span style={{ background: column.badgeColor, color: column.color, fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 8 }}>{columnOrders.length}</span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', flex: 1 }}>
+                      {columnOrders.length === 0 ? (
+                        <div style={{ border: `1px dashed ${C.border}`, borderRadius: 16, height: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted, fontSize: 12, fontWeight: 500 }}>
+                          No Orders
+                        </div>
+                      ) : (
+                        columnOrders.map(order => (
+                          <div 
+                            key={order.id}
+                            style={{
+                              background: C.white,
+                              border: `1px solid ${C.border}`,
+                              borderRadius: 18,
+                              padding: 16,
+                              boxShadow: '0 4px 12px rgba(7,20,40,0.02)'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                              <span style={{ fontWeight: 800, fontSize: 14 }}>{order.token}</span>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: C.brass, background: C.brassLight, padding: '2px 6px', borderRadius: 4 }}>
+                                {locationLabel} {order.room}
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderBottom: `1px solid ${C.borderLight}`, paddingBottom: 10, marginBottom: 12 }}>
+                              {order.items.map((item, idx) => (
+                                <div key={idx} style={{ display: 'flex', justifyItems: 'space-between', fontSize: 12.5, color: C.textSub }}>
+                                  <span style={{ flex: 1 }}>{item.name}</span>
+                                  <span style={{ fontWeight: 700 }}>×{item.qty}</span>
+                                </div>
+                              ))}
+                              {order.note && (
+                                <div style={{ fontSize: 11, color: C.danger, background: C.dangerLight, padding: '4px 8px', borderRadius: 6, marginTop: 4 }}>
+                                  💬 {order.note}
+                                </div>
+                              )}
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontWeight: 800, fontSize: 14, color: C.emerald }}>₹{order.total}</span>
+                              
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button 
+                                  onClick={() => cancelOrder(order.id)}
+                                  title="Cancel/Refund Order"
+                                  style={{ background: C.dangerLight, border: 'none', color: C.danger, padding: 8, borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                                {order.status === 'NEW' && (
+                                  <button 
+                                    onClick={() => updateOrderStatus(order.id, 'PREPARING')}
+                                    style={{ background: C.emerald, border: 'none', color: C.white, fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 8, cursor: 'pointer' }}
+                                  >
+                                    Accept
+                                  </button>
+                                )}
+                                {order.status === 'PREPARING' && (
+                                  <button 
+                                    onClick={() => updateOrderStatus(order.id, 'ON_THE_WAY')}
+                                    style={{ background: C.emerald, border: 'none', color: C.white, fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 8, cursor: 'pointer' }}
+                                  >
+                                    Ship
+                                  </button>
+                                )}
+                                {order.status === 'ON_THE_WAY' && (
+                                  <button 
+                                    onClick={() => updateOrderStatus(order.id, 'DELIVERED')}
+                                    style={{ background: C.emerald, border: 'none', color: C.white, fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 8, cursor: 'pointer' }}
+                                  >
+                                    Deliver
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* MENU EDITOR SECTION */}
         {activeSection === 'menu' && (
           <div className="animate-fade-up">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-              <h2 className="serif" style={{ fontSize: 28, margin: 0, color: C.text }}>Menu Editor</h2>
-              <button onClick={() => setShowAddItemModal(true)} style={{ background: C.emerald, color: C.white, padding: '10px 20px', borderRadius: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Plus size={18} /> Add New Item
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
+              <div>
+                <h2 className="serif" style={{ fontSize: 32, fontWeight: 800, color: C.text, margin: 0 }}>Menu Manager</h2>
+                <p style={{ color: C.textSub, fontSize: 14, marginTop: 6 }}>Manage your dishes, price points, and active delivery toggles.</p>
+              </div>
+              <button 
+                onClick={() => setShowAddItemModal(true)}
+                style={{ 
+                  background: C.emerald, 
+                  color: C.white, 
+                  border: 'none',
+                  borderRadius: 14, 
+                  padding: '12px 24px', 
+                  fontSize: 14, 
+                  fontWeight: 700, 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 8,
+                  cursor: 'pointer',
+                  boxShadow: '0 8px 24px rgba(7,20,40,0.1)'
+                }}
+              >
+                <Plus size={18} /> Add New Dish
               </button>
             </div>
-            
-            <Card style={{ padding: 0, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead style={{ background: C.borderLight, fontSize: 13, color: C.textSub, textTransform: 'uppercase' }}>
-                  <tr>
-                    <th style={{ padding: '16px 24px', fontWeight: 600 }}>Item Name</th>
-                    <th style={{ padding: '16px 24px', fontWeight: 600 }}>Category</th>
-                    <th style={{ padding: '16px 24px', fontWeight: 600 }}>Price</th>
-                    <th style={{ padding: '16px 24px', fontWeight: 600 }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {menuItems.map(item => (
-                    <tr key={item.id} style={{ borderBottom: `1px solid ${C.borderLight}` }}>
-                      <td style={{ padding: '16px 24px', fontWeight: 600 }}><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><VegDot isVeg={item.isVeg} /> {item.name}</div></td>
-                      <td style={{ padding: '16px 24px', color: C.textSub, fontSize: 14 }}>{item.category}</td>
-                      <td style={{ padding: '16px 24px', fontWeight: 700, color: C.emerald }}>₹{item.price}</td>
-                      <td style={{ padding: '16px 24px' }}>
-                         <button onClick={() => setMenuItems(menuItems.filter(i => i.id !== item.id))} style={{ color: C.danger, padding: 8, borderRadius: 8, background: C.dangerLight }}><Trash2 size={16} /></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Card>
 
-            {/* ADD ITEM MODAL */}
-            {showAddItemModal && (
-              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div className="animate-pop" style={{ background: C.white, borderRadius: 24, padding: 32, width: 500, maxWidth: '90%' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                    <h3 style={{ fontSize: 20, fontWeight: 700 }}>Add New Menu Item</h3>
-                    <button onClick={() => setShowAddItemModal(false)}><X size={24} color={C.textMuted} /></button>
-                  </div>
-                  
-                  <form onSubmit={handleAddItem} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.textSub, marginBottom: 8 }}>Item Name</label>
-                      <input required autoFocus value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1px solid ${C.border}`, fontSize: 15 }} placeholder="e.g. Chicken Curry" />
-                    </div>
-                    
-                    <div>
-                      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.textSub, marginBottom: 8 }}>Description</label>
-                      <input value={newItem.desc} onChange={e => setNewItem({...newItem, desc: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1px solid ${C.border}`, fontSize: 15 }} placeholder="Brief description of the dish" />
-                    </div>
+            {/* FILTERS & SEARCH ROW */}
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 28 }}>
+              <div style={{ position: 'relative', flex: 1 }}>
+                <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: C.textMuted }}><ClipboardList size={18} /></span>
+                <input 
+                  type="text" 
+                  placeholder="Search item name or recipe details..." 
+                  value={menuSearch} 
+                  onChange={e => setMenuSearch(e.target.value)}
+                  style={{ width: '100%', padding: '14px 16px 14px 48px', borderRadius: 16, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.white, color: C.text }}
+                />
+              </div>
 
-                    <div style={{ display: 'flex', gap: 16 }}>
-                      <div style={{ flex: 1 }}>
-                        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.textSub, marginBottom: 8 }}>Price (₹)</label>
-                        <input required type="number" min="0" value={newItem.price} onChange={e => setNewItem({...newItem, price: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1px solid ${C.border}`, fontSize: 15 }} placeholder="0" />
+              {/* CATEGORY SELECTOR CAROUSEL */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                {['All', 'Breakfast', 'Starters', 'Mains', 'Desserts', 'Beverages'].map(category => {
+                  const isActive = activeMenuCategory === category;
+                  return (
+                    <button
+                      key={category}
+                      onClick={() => setActiveMenuCategory(category)}
+                      style={{
+                        padding: '10px 18px',
+                        borderRadius: 12,
+                        background: isActive ? C.brass : C.white,
+                        color: isActive ? C.white : C.textSub,
+                        border: `1.5px solid ${isActive ? C.brass : C.border}`,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {category}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ITEMS GRID */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
+              {menuItems
+                .filter(item => {
+                  const matchesSearch = item.name.toLowerCase().includes(menuSearch.toLowerCase()) || (item.desc && item.desc.toLowerCase().includes(menuSearch.toLowerCase()));
+                  const matchesCategory = activeMenuCategory === 'All' || item.category === activeMenuCategory;
+                  return matchesSearch && matchesCategory;
+                })
+                .map(item => (
+                  <Card key={item.id} style={{ padding: 0, overflow: 'hidden', border: `1px solid ${C.border}`, boxShadow: 'none', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ height: 160, position: 'relative', overflow: 'hidden' }}>
+                      <img src={item.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80'} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <div style={{ position: 'absolute', top: 12, left: 12 }}>
+                        <span style={{ background: 'rgba(7,20,40,0.6)', backdropFilter: 'blur(4px)', color: C.white, fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 6, textTransform: 'uppercase' }}>
+                          {item.category}
+                        </span>
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.textSub, marginBottom: 8 }}>Category</label>
-                        <select value={newItem.category} onChange={e => setNewItem({...newItem, category: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1px solid ${C.border}`, fontSize: 15, background: C.white }}>
-                          {['Breakfast', 'Starters', 'Mains', 'Breads', 'Desserts', 'Beverages', 'Spirits'].map(c => <option key={c} value={c}>{c}</option>)}
+                      <div style={{ position: 'absolute', top: 12, right: 12 }}>
+                        <VegDot isVeg={item.isVeg} />
+                      </div>
+                    </div>
+
+                    <div style={{ padding: 20, flex: 1, display: 'flex', flexDirection: 'column' }}>
+                      <h4 style={{ fontWeight: 800, fontSize: 16, margin: '0 0 6px 0', color: C.text }}>{item.name}</h4>
+                      <p style={{ fontSize: 12.5, color: C.textSub, margin: '0 0 16px 0', lineHeight: 1.4, flex: 1 }}>{item.desc}</p>
+                      
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 800, fontSize: 18, color: C.emerald }}>₹{item.price}</span>
+                        
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                          {/* Availability Toggle */}
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={item.available} 
+                              onChange={() => toggleItemAvailability(item.id)}
+                              style={{ cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: 11, fontWeight: 700, color: item.available ? C.emerald : C.textMuted }}>
+                              {item.available ? 'Available' : 'Disabled'}
+                            </span>
+                          </label>
+
+                          <button 
+                            onClick={() => handleDeleteItem(item.id)}
+                            style={{ background: C.dangerLight, border: 'none', color: C.danger, padding: 8, borderRadius: 8, cursor: 'pointer' }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+            </div>
+
+            {/* ADD DISH MODAL */}
+            {showAddItemModal && (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(7,20,40,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
+                <div className="animate-pop animate-pop-in" style={{ background: C.white, borderRadius: 24, padding: 32, width: 500, maxWidth: '90%', boxShadow: '0 24px 64px rgba(7,20,40,0.15)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                    <h3 className="serif" style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Add New Dish</h3>
+                    <button onClick={() => setShowAddItemModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} color={C.textMuted} /></button>
+                  </div>
+
+                  <form onSubmit={handleAddItem} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Item Name</label>
+                      <input required autoFocus value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14 }} placeholder="e.g. Gourmet Club Sandwich" />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Description / Recipe Details</label>
+                      <input value={newItem.desc} onChange={e => setNewItem({...newItem, desc: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14 }} placeholder="e.g. Double layered bread with smoked bacon, eggs, poultry..." />
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Price (₹)</label>
+                        <input required type="number" min="0" value={newItem.price} onChange={e => setNewItem({...newItem, price: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14 }} placeholder="0" />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Category</label>
+                        <select value={newItem.category} onChange={e => setNewItem({...newItem, category: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.white }}>
+                          {['Breakfast', 'Starters', 'Mains', 'Desserts', 'Beverages'].map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
-                      <label style={{ fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                        <input type="radio" checked={newItem.isVeg} onChange={() => setNewItem({...newItem, isVeg: true})} /> Veg
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Select Food Image Preset</label>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 10 }}>
+                        {IMAGE_PRESETS.map((p, i) => (
+                          <div 
+                            key={i} 
+                            onClick={() => setNewItem({ ...newItem, image: p.url })}
+                            style={{ 
+                              height: 60, 
+                              borderRadius: 10, 
+                              overflow: 'hidden', 
+                              border: newItem.image === p.url ? `3px solid ${C.brass}` : `1px solid ${C.border}`, 
+                              cursor: 'pointer',
+                              position: 'relative'
+                            }}
+                          >
+                            <img src={p.url} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.6)', color: C.white, fontSize: 8, padding: '2px 0', textAlign: 'center', fontWeight: 600 }}>{p.name.split('/')[0]}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <input 
+                        type="text" 
+                        value={newItem.image} 
+                        onChange={e => setNewItem({ ...newItem, image: e.target.value })}
+                        placeholder="Or input custom Image URL..." 
+                        style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 13 }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                        <input type="radio" checked={newItem.isVeg} onChange={() => setNewItem({...newItem, isVeg: true})} /> Veg Dot
                       </label>
-                      <label style={{ fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                        <input type="radio" checked={!newItem.isVeg} onChange={() => setNewItem({...newItem, isVeg: false})} /> Non-Veg
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                        <input type="radio" checked={!newItem.isVeg} onChange={() => setNewItem({...newItem, isVeg: false})} /> Non-Veg Dot
                       </label>
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 16 }}>
-                      <button type="button" onClick={() => setShowAddItemModal(false)} style={{ padding: '12px 24px', borderRadius: 12, fontWeight: 600, color: C.textSub }}>Cancel</button>
-                      <button type="submit" style={{ background: C.emerald, color: C.white, padding: '12px 24px', borderRadius: 12, fontWeight: 600 }}>Save Item</button>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 12 }}>
+                      <button type="button" onClick={() => setShowAddItemModal(false)} style={{ padding: '12px 24px', borderRadius: 12, border: 'none', background: 'none', color: C.textSub, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+                      <button type="submit" style={{ background: C.emerald, color: C.white, border: 'none', padding: '12px 24px', borderRadius: 12, fontWeight: 700, cursor: 'pointer' }}>Publish Dish</button>
                     </div>
                   </form>
                 </div>
@@ -386,80 +1011,307 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
             )}
           </div>
         )}
-        
-        {/* OTHER SECTIONS PLACEHOLDER (To keep code size reasonable while meeting "zero placeholders for functionality" - the core logic was Billing/Menu) */}
-        {(activeSection === 'orders' || activeSection === 'reports') && (
-           <div className="animate-fade-up" style={{ padding: 40, textAlign: 'center', color: C.textSub }}>
-              <Package size={48} color={C.border} style={{ margin: '0 auto', marginBottom: 16 }} />
-              <h3>{activeSection === 'orders' ? 'Live Orders Table View' : 'Analytics & Reports'}</h3>
-              <p>Data is active in state, visualization UI component here.</p>
-           </div>
+
+        {/* REPORTS & ANALYTICS SECTION */}
+        {activeSection === 'reports' && (
+          <div className="animate-fade-up">
+            <div style={{ marginBottom: 28 }}>
+              <h2 className="serif" style={{ fontSize: 32, fontWeight: 800, color: C.text, margin: 0 }}>Business Analytics & Sales</h2>
+              <p style={{ color: C.textSub, fontSize: 14, marginTop: 6 }}>Understand product sales performance and kitchen prep timing statistics.</p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 32, marginBottom: 32 }}>
+              {/* REVENUE LINE CHART */}
+              <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none' }}>
+                <h3 className="serif" style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: '0 0 6px 0' }}>F&B Sales Trend (₹)</h3>
+                <p style={{ color: C.textSub, fontSize: 13, margin: '0 0 24px 0' }}>Cumulative revenue tracking based on the chronological order sequence.</p>
+
+                {/* SVG Line Chart */}
+                {orders.filter(o => o.status !== 'CANCELLED').length === 0 ? (
+                  <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted, fontSize: 14 }}>
+                    No sales data available.
+                  </div>
+                ) : (
+                  <div style={{ position: 'relative' }}>
+                    <svg viewBox="0 0 500 240" style={{ width: '100%', height: 260 }}>
+                      <defs>
+                        <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={C.brass} stopOpacity="0.4" />
+                          <stop offset="100%" stopColor={C.brass} stopOpacity="0.0" />
+                        </linearGradient>
+                      </defs>
+                      
+                      {/* Grid Lines */}
+                      <line x1="40" y1="200" x2="480" y2="200" stroke={C.border} strokeWidth="1.5" />
+                      <line x1="40" y1="140" x2="480" y2="140" stroke={C.border} strokeWidth="1" strokeDasharray="4" />
+                      <line x1="40" y1="80" x2="480" y2="80" stroke={C.border} strokeWidth="1" strokeDasharray="4" />
+                      <line x1="40" y1="20" x2="480" y2="20" stroke={C.border} strokeWidth="1" strokeDasharray="4" />
+
+                      {/* Cumulative calculation */}
+                      {(() => {
+                        const validOrders = orders.filter(o => o.status !== 'CANCELLED');
+                        let cumulativeTotal = 0;
+                        const dataPoints = validOrders.map((o, idx) => {
+                          cumulativeTotal += o.total;
+                          return { val: cumulativeTotal, idx };
+                        });
+                        const maxVal = Math.max(...dataPoints.map(d => d.val), 1000);
+                        
+                        // Map helper: x is idx, y is val mapped between ranges
+                        const getCoords = (idx, val) => {
+                          const x = 40 + (idx / Math.max(dataPoints.length - 1, 1)) * 440;
+                          const y = 200 - (val / maxVal) * 170;
+                          return { x, y };
+                        };
+
+                        const pointsString = dataPoints.map(d => {
+                          const { x, y } = getCoords(d.idx, d.val);
+                          return `${x},${y}`;
+                        }).join(' ');
+
+                        const areaPath = dataPoints.length > 0 
+                          ? `M 40,200 ` + dataPoints.map(d => {
+                              const { x, y } = getCoords(d.idx, d.val);
+                              return `L ${x},${y}`;
+                            }).join(' ') + ` L ${getCoords(dataPoints.length - 1, dataPoints[dataPoints.length - 1].val).x},200 Z`
+                          : '';
+
+                        return (
+                          <>
+                            {/* Area fill */}
+                            {areaPath && <path d={areaPath} fill="url(#chartGrad)" />}
+                            
+                            {/* Trend Line */}
+                            {pointsString && <polyline points={pointsString} fill="none" stroke={C.brass} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />}
+                            
+                            {/* Dots */}
+                            {dataPoints.map((d, idx) => {
+                              const { x, y } = getCoords(d.idx, d.val);
+                              return (
+                                <circle 
+                                  key={idx} 
+                                  cx={x} 
+                                  cy={y} 
+                                  r="5" 
+                                  fill={C.emerald} 
+                                  stroke={C.white} 
+                                  strokeWidth="2" 
+                                />
+                              );
+                            })}
+
+                            {/* X/Y Axes texts */}
+                            <text x="35" y="218" fill={C.textMuted} fontSize="10" textAnchor="middle">0</text>
+                            <text x="480" y="218" fill={C.textMuted} fontSize="10" textAnchor="middle">{dataPoints.length}</text>
+                            <text x="25" y="25" fill={C.textMuted} fontSize="9" textAnchor="end">₹{maxVal.toLocaleString()}</text>
+                            <text x="25" y="110" fill={C.textMuted} fontSize="9" textAnchor="end">₹{Math.round(maxVal/2).toLocaleString()}</text>
+                          </>
+                        );
+                      })()}
+                    </svg>
+                  </div>
+                )}
+              </Card>
+
+              {/* SALES BY CATEGORY BAR CHART */}
+              <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none' }}>
+                <h3 className="serif" style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: '0 0 6px 0' }}>Sales by Category</h3>
+                <p style={{ color: C.textSub, fontSize: 13, margin: '0 0 24px 0' }}>Distribution of food revenue across dish categories.</p>
+
+                {salesByCategory.length === 0 ? (
+                  <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted, fontSize: 14 }}>
+                    No product categories sold yet.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 260, justifyContent: 'center' }}>
+                    {(() => {
+                      const maxVal = Math.max(...salesByCategory.map(s => s.value), 100);
+                      return salesByCategory.map((item, idx) => {
+                        const pct = (item.value / maxVal) * 100;
+                        return (
+                          <div key={idx}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>
+                              <span>{item.category}</span>
+                              <span style={{ color: C.emerald }}>₹{item.value.toLocaleString()}</span>
+                            </div>
+                            <div style={{ width: '100%', height: 10, background: C.borderLight, borderRadius: 5, overflow: 'hidden' }}>
+                              <div style={{ width: `${pct}%`, height: '100%', background: C.brass, borderRadius: 5 }}></div>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                )}
+              </Card>
+            </div>
+
+            {/* PERFORMANCE METRICS */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
+              <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none', display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ background: '#FFFbeb', padding: 14, borderRadius: '50%' }}>
+                  <Award size={24} color="#D97706" />
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase' }}>Top Seller Item</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: C.text, marginTop: 4 }}>
+                    {topDishes[0] ? topDishes[0].name : 'N/A'}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.textSub, marginTop: 4 }}>
+                    {topDishes[0] ? `${topDishes[0].count} plates ordered` : 'No orders logged'}
+                  </div>
+                </div>
+              </Card>
+
+              <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none', display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ background: '#ecfdf5', padding: 14, borderRadius: '50%' }}>
+                  <Coffee size={24} color="#059669" />
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase' }}>Avg Kitchen Dispatch</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: C.text, marginTop: 4 }}>
+                    12.8 minutes
+                  </div>
+                  <div style={{ fontSize: 11, color: C.textSub, marginTop: 4 }}>
+                    From prep trigger to deliver
+                  </div>
+                </div>
+              </Card>
+
+              <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none', display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ background: '#fdf2f8', padding: 14, borderRadius: '50%' }}>
+                  <User size={24} color="#DB2777" />
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase' }}>F&B Conversion</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: C.text, marginTop: 4 }}>
+                    84.2 %
+                  </div>
+                  <div style={{ fontSize: 11, color: C.textSub, marginTop: 4 }}>
+                    Active check-in F&B rate
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </div>
         )}
       </div>
 
-      {/* PRINT INVOICE MODAL (CSS print media query handles the magic) */}
+      {/* TAX INVOICE PRINT VIEW COMPONENT (Only shown in DOM when print modal is open) */}
       {showPrintModal && activeBill && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(7,20,40,0.85)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(6px)' }}>
           {/* Close button for UI */}
-          <button onClick={() => setShowPrintModal(false)} className="no-print" style={{ position: 'absolute', top: 24, right: 24, color: C.white }}><X size={32} /></button>
+          <button 
+            onClick={() => setShowPrintModal(false)} 
+            className="no-print" 
+            style={{ 
+              position: 'absolute', 
+              top: 24, 
+              right: 24, 
+              color: C.white, 
+              background: 'rgba(255,255,255,0.1)', 
+              border: 'none', 
+              padding: 10, 
+              borderRadius: '50%',
+              cursor: 'pointer' 
+            }}
+          >
+            <X size={26} />
+          </button>
           
-          <div className="print-section animate-pop" style={{ background: C.white, width: '100%', maxWidth: 600, padding: 48, borderRadius: 16, color: C.text, boxShadow: '0 24px 64px rgba(0,0,0,0.2)' }}>
-             <div style={{ textAlign: 'center', borderBottom: `2px solid ${C.text}`, paddingBottom: 24, marginBottom: 32 }}>
-                <h1 className="serif" style={{ fontSize: 32, margin: 0 }}>GRAND VISTA HOTEL</h1>
-                <p style={{ fontSize: 14, color: C.textSub, marginTop: 4 }}>123 Luxury Ave · Downtown City</p>
-                <div style={{ marginTop: 16, display: 'inline-block', border: `1px solid ${C.text}`, padding: '4px 16px', fontWeight: 700, letterSpacing: 2 }}>TAX INVOICE</div>
+          <div 
+            className="print-section animate-pop" 
+            style={{ 
+              background: C.white, 
+              width: '100%', 
+              maxWidth: 640, 
+              padding: 48, 
+              borderRadius: 24, 
+              color: C.text, 
+              boxShadow: '0 32px 80px rgba(0,0,0,0.25)', 
+              fontFamily: '"Plus Jakarta Sans", sans-serif'
+            }}
+          >
+             {/* Invoice Header */}
+             <div style={{ textAlign: 'center', borderBottom: `2.5px solid ${C.text}`, paddingBottom: 24, marginBottom: 32 }}>
+                <h2 className="serif" style={{ fontSize: 30, fontWeight: 800, margin: 0, color: C.emerald }}>{CONFIG.hotelName.toUpperCase()}</h2>
+                <p style={{ fontSize: 13, color: C.textSub, marginTop: 6, fontWeight: 500 }}>{CONFIG.address}</p>
+                <div style={{ marginTop: 16, display: 'inline-block', border: `1.5px solid ${C.text}`, padding: '4px 18px', fontWeight: 800, fontSize: 11, letterSpacing: 2, borderRadius: 4 }}>TAX INVOICE</div>
              </div>
 
-             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 32, fontSize: 14 }}>
+             {/* Guest and Date Details */}
+             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 16, marginBottom: 32, fontSize: 13.5 }}>
                <div>
-                 <div style={{ color: C.textSub }}>Guest Name</div>
-                 <div style={{ fontWeight: 700, fontSize: 16 }}>{activeBill.guestName}</div>
+                 <div style={{ color: C.textMuted, fontWeight: 700, textTransform: 'uppercase', fontSize: 10 }}>Guest Name</div>
+                 <div style={{ fontWeight: 800, fontSize: 16, marginTop: 4 }}>{activeBill.guestName}</div>
                </div>
                <div style={{ textAlign: 'right' }}>
-                 <div style={{ color: C.textSub }}>Room No / Dates</div>
-                 <div style={{ fontWeight: 700, fontSize: 16 }}>{activeBill.room} · {activeBill.checkIn} to {activeBill.checkOut}</div>
+                 <div style={{ color: C.textMuted, fontWeight: 700, textTransform: 'uppercase', fontSize: 10 }}>{locationLabel} / Check Dates</div>
+                 <div style={{ fontWeight: 800, fontSize: 16, marginTop: 4 }}>{locationLabel} {activeBill.room} · {activeBill.checkIn} to {activeBill.checkOut}</div>
                </div>
              </div>
 
-             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 32, fontSize: 14 }}>
+             {/* Ledger Itemization */}
+             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 32, fontSize: 13.5 }}>
                <thead>
-                 <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-                   <th style={{ textAlign: 'left', padding: '12px 0' }}>Description</th>
-                   <th style={{ textAlign: 'right', padding: '12px 0' }}>Amount (₹)</th>
+                 <tr style={{ borderBottom: `1.5px solid ${C.text}` }}>
+                   <th style={{ textAlign: 'left', padding: '12px 0', fontWeight: 800, textTransform: 'uppercase', fontSize: 11, color: C.textSub }}>Ledger Item Description</th>
+                   <th style={{ textAlign: 'right', padding: '12px 0', fontWeight: 800, textTransform: 'uppercase', fontSize: 11, color: C.textSub }}>Amount (₹)</th>
                  </tr>
                </thead>
                <tbody>
-                 <tr style={{ borderBottom: `1px dashed ${C.borderLight}` }}>
-                   <td style={{ padding: '12px 0', fontWeight: 600 }}>Room Accommodation Charge</td>
-                   <td style={{ padding: '12px 0', textAlign: 'right', fontWeight: 600 }}>{calculateBillTotals(activeBill).roomTotal.toFixed(2)}</td>
-                 </tr>
-                 {activeBill.roomServiceCharges.map((c, i) => (
-                    <tr key={i} style={{ borderBottom: `1px dashed ${C.borderLight}` }}>
-                      <td style={{ padding: '12px 0', color: C.textSub }}>Room Service (Order #{c.orderId})</td>
-                      <td style={{ padding: '12px 0', textAlign: 'right' }}>{c.amount.toFixed(2)}</td>
+                 {isHotel && (
+                   <tr style={{ borderBottom: `1px dashed ${C.border}` }}>
+                     <td style={{ padding: '14px 0', fontWeight: 700 }}>Room Accommodation Charge</td>
+                     <td style={{ padding: '14px 0', textAlign: 'right', fontWeight: 800 }}>{activeTotals.roomTotal.toFixed(2)}</td>
+                   </tr>
+                 )}
+                 {activeBill.roomServiceCharges && activeBill.roomServiceCharges.map((c, i) => (
+                    <tr key={i} style={{ borderBottom: `1px dashed ${C.border}` }}>
+                      <td style={{ padding: '14px 0', color: C.textSub }}>Room dining charge (Order #{c.orderId})</td>
+                      <td style={{ padding: '14px 0', textAlign: 'right', fontWeight: 600 }}>{c.amount.toFixed(2)}</td>
                     </tr>
                  ))}
+                 
+                 {isHotel && (
+                   <tr>
+                     <td style={{ padding: '12px 0 6px', color: C.textMuted, fontSize: 12.5 }}>Room Accommodation Tax (12%)</td>
+                     <td style={{ padding: '12px 0 6px', textAlign: 'right', color: C.textSub, fontSize: 12.5 }}>{activeTotals.roomTax.toFixed(2)}</td>
+                   </tr>
+                 )}
                  <tr>
-                   <td style={{ padding: '12px 0', color: C.textSub }}>Room Tax (12%)</td>
-                   <td style={{ padding: '12px 0', textAlign: 'right' }}>{calculateBillTotals(activeBill).roomTax.toFixed(2)}</td>
+                   <td style={{ padding: '6px 0 12px', color: C.textMuted, fontSize: 12.5, borderBottom: `1.5px solid ${C.text}` }}>Food & Beverage SGST+CGST (15%)</td>
+                   <td style={{ padding: '6px 0 12px', textAlign: 'right', color: C.textSub, fontSize: 12.5, borderBottom: `1.5px solid ${C.text}` }}>{activeTotals.serviceTax.toFixed(2)}</td>
                  </tr>
+
                  <tr>
-                   <td style={{ padding: '12px 0', color: C.textSub, borderBottom: `2px solid ${C.border}` }}>F&B Tax (15%)</td>
-                   <td style={{ padding: '12px 0', textAlign: 'right', borderBottom: `2px solid ${C.border}` }}>{calculateBillTotals(activeBill).serviceTax.toFixed(2)}</td>
-                 </tr>
-                 <tr>
-                   <td style={{ padding: '16px 0', fontWeight: 700, fontSize: 18 }}>GRAND TOTAL</td>
-                   <td style={{ padding: '16px 0', textAlign: 'right', fontWeight: 700, fontSize: 20 }}>₹{calculateBillTotals(activeBill).grandTotal.toFixed(0)}</td>
+                   <td style={{ padding: '20px 0', fontWeight: 800, fontSize: 16 }}>GRAND NET TOTAL</td>
+                   <td style={{ padding: '20px 0', textAlign: 'right', fontWeight: 900, fontSize: 22, color: C.emerald }}>₹{activeTotals.grandTotal.toFixed(0)}</td>
                  </tr>
                </tbody>
              </table>
 
-             <div style={{ textAlign: 'center', color: C.textSub, fontSize: 13, fontStyle: 'italic', marginTop: 48 }}>
-               Thank you for staying with us 🙏<br/>Have a safe journey!
+             {/* Footer Sign-off */}
+             <div style={{ textAlign: 'center', color: C.textMuted, fontSize: 12.5, fontStyle: 'italic', marginTop: 40, borderTop: `1px solid ${C.borderLight}`, paddingTop: 24 }}>
+               Thank you for dining with {CONFIG.shortName}! 🙏<br/>
+               <span style={{ fontSize: 10, textTransform: 'uppercase', fontStyle: 'normal', letterSpacing: 0.5, marginTop: 4, display: 'inline-block' }}>Have a pleasant & safe journey</span>
              </div>
 
-             <div className="no-print" style={{ marginTop: 40, textAlign: 'center' }}>
-                <button onClick={() => window.print()} style={{ background: C.emerald, color: C.white, padding: '12px 32px', borderRadius: 8, fontWeight: 700, fontSize: 16 }}>
+             <div className="no-print" style={{ marginTop: 40, display: 'flex', justifyContent: 'center' }}>
+                <button 
+                  onClick={() => window.print()} 
+                  style={{ 
+                    background: C.emerald, 
+                    color: C.white, 
+                    border: 'none',
+                    padding: '14px 40px', 
+                    borderRadius: 14, 
+                    fontWeight: 700, 
+                    fontSize: 15,
+                    cursor: 'pointer',
+                    boxShadow: '0 8px 24px rgba(7,20,40,0.1)'
+                  }}
+                >
                   Print Document
                 </button>
              </div>

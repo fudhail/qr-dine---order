@@ -4,6 +4,7 @@ import { C } from '../../constants/theme';
 import { Card } from '../../components/ui/Card';
 import { VegDot } from '../../components/ui/VegDot';
 import { ClockWidget } from '../../components/ui/ClockWidget';
+import { CONFIG } from '../../config';
 
 export const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketConnected }) => {
   const [activeTab, setActiveTab] = useState('queue');
@@ -207,7 +208,7 @@ export const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketC
           <div style={{ background: C.brassLight, padding: 8, borderRadius: 8 }}><ChefHat size={24} color={C.brass} /></div>
           <div>
             <h1 className="serif" style={{ fontSize: 20, color: C.emerald, margin: 0 }}>Kitchen Display System</h1>
-            <p style={{ fontSize: 13, color: C.textSub, marginTop: 2 }}>Grand Vista Hotel</p>
+            <p style={{ fontSize: 13, color: C.textSub, marginTop: 2 }}>{CONFIG.hotelName}</p>
           </div>
         </div>
         

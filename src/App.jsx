@@ -9,10 +9,20 @@ import { GuestApp } from './apps/Guest/GuestApp';
 import { KitchenApp } from './apps/Kitchen/KitchenApp';
 import { RunnerApp } from './apps/Runner/RunnerApp';
 import { AdminApp } from './apps/Admin/AdminApp';
+import { CONFIG } from './config';
 
 export default function App() {
   const [activeInterface, setActiveInterface] = useState(null); // 'guest' | 'kitchen' | 'admin' | 'runner'
   const [socketConnected, setSocketConnected] = useState(false);
+  const [isQrScanned, setIsQrScanned] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('room') || params.has('table') || params.has('guest')) {
+      setActiveInterface('guest');
+      setIsQrScanned(true);
+    }
+  }, []);
 
   // --- INITIAL DATA (Sree Gokulam Defaults) ---
   const initialMenu = [
@@ -103,8 +113,8 @@ export default function App() {
           <div style={{ display: 'inline-flex', background: C.emeraldLight, padding: 16, borderRadius: '50%', marginBottom: 16 }}>
              <UtensilsCrossed size={32} color={C.emerald} />
           </div>
-          <h1 className="serif" style={{ fontSize: 32, color: C.emerald, margin: '0 0 8px 0' }}>Grand Vista Hotel</h1>
-          <p style={{ color: C.textSub, fontSize: 15 }}>Premium Hospitality & Services</p>
+          <h1 className="serif" style={{ fontSize: 32, color: C.emerald, margin: '0 0 8px 0' }}>{CONFIG.hotelName}</h1>
+          <p style={{ color: C.textSub, fontSize: 15 }}>{CONFIG.welcomeTagline}</p>
           <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700, color: C.brass, letterSpacing: 2, textTransform: 'uppercase' }}>Unified Management Platform</div>
         </div>
 
@@ -150,7 +160,7 @@ export default function App() {
         <AdminApp orders={orders} setOrders={setOrders} menuItems={menuItems} setMenuItems={setMenuItems} roomBills={roomBills} setRoomBills={setRoomBills} socketConnected={socketConnected} />
       </div>
       
-      {activeInterface !== null && (
+      {activeInterface !== null && !isQrScanned && (
         <button 
           onClick={() => setActiveInterface(null)}
           className="no-print animate-fade-up"
