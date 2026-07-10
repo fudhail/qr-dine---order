@@ -14,7 +14,7 @@ export const KitchenApp = ({ config = {} }) => {
   const menuItems = useStore(state => state.menuItems);
   const setMenuItems = useStore(state => state.setMenuItems);
 
-  const [activeTab, setActiveTab] = useState('NEW'); // NEW, PREPARING, ON_THE_WAY, DELIVERED, MENU
+  const [activeTab, setActiveTab] = useState('ACTIVE'); // ACTIVE, READY, MENU
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -27,7 +27,12 @@ export const KitchenApp = ({ config = {} }) => {
   };
 
   const filteredOrders = useMemo(() => {
-    let filtered = orders.filter(o => o.status === activeTab);
+    const groupedStatuses = activeTab === 'ACTIVE'
+      ? ['NEW', 'PREPARING']
+      : activeTab === 'READY'
+        ? ['ON_THE_WAY', 'DELIVERED']
+        : [];
+    let filtered = activeTab === 'MENU' ? [] : orders.filter(o => groupedStatuses.includes(o.status));
     if (searchQuery) {
       filtered = filtered.filter(o => 
         o.token.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -81,10 +86,8 @@ export const KitchenApp = ({ config = {} }) => {
   }
 
   const tabs = [
-    { id: 'NEW', label: 'Open Orders', icon: FileText, count: orders.filter(o => o.status === 'NEW').length },
-    { id: 'PREPARING', label: 'In Progress', icon: Clock, count: orders.filter(o => o.status === 'PREPARING').length },
-    { id: 'ON_THE_WAY', label: 'Ready / Dispatch', icon: CheckSquare, count: orders.filter(o => o.status === 'ON_THE_WAY').length },
-    { id: 'DELIVERED', label: 'Completed', icon: CheckCircle, count: orders.filter(o => o.status === 'DELIVERED').length },
+    { id: 'ACTIVE', label: 'Open / In Progress', icon: FileText, count: orders.filter(o => ['NEW', 'PREPARING'].includes(o.status)).length },
+    { id: 'READY', label: 'Ready / Completed', icon: CheckSquare, count: orders.filter(o => ['ON_THE_WAY', 'DELIVERED'].includes(o.status)).length },
     { id: 'MENU', label: 'Menu Editor', icon: LayoutDashboard, count: 0 },
   ];
 

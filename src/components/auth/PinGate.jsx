@@ -43,7 +43,7 @@ export const PinGate = ({ role, onLogin }) => {
               onChange={e => setPin(e.target.value)}
               style={{
                 width: '100%', padding: '14px 14px 14px 40px', borderRadius: 14, border: `1.5px solid ${error ? C.danger : C.border}`,
-                background: C.borderLight, fontSize: 16, outline: 'none', letterSpacing: 4, fontFamily: 'monospace', boxSizing: 'border-box',
+                background: C.borderLight, fontSize: 16, outline: 'none', letterSpacing: 4, fontFamily: 'inherit', boxSizing: 'border-box',
                 transition: 'border-color 0.2s', fontWeight: 'bold', color: C.text
               }}
               autoFocus

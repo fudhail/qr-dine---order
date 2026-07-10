@@ -1,16 +1,6 @@
 {
   "menu_items": [
     {
-      "id": 2,
-      "name": "Margherita Pizza",
-      "desc": "Classic San Marzano tomato sauce, fresh mozzarella, and basil",
-      "price": 380,
-      "category": "Mains",
-      "isVeg": 1,
-      "available": 1,
-      "image": "https://images.unsplash.com/photo-1604068549290-dea0e4a30536?w=400&q=80"
-    },
-    {
       "id": 3,
       "name": "Eggs Benedict",
       "desc": "Poached eggs on English muffins with hollandaise",
@@ -135,10 +125,22 @@
   ],
   "orders": [
     {
+      "id": 1783711538987,
+      "token": "#80",
+      "room": "101",
+      "status": "DELIVERED",
+      "createdAt": 1783711538274,
+      "deliveryPreference": "ALL_AT_ONCE",
+      "items": "[{\"id\":1783711538273.0115,\"name\":\"Margherita Pizza\",\"qty\":1,\"price\":380,\"status\":\"DISPATCHED\"}]",
+      "note": "",
+      "subtotal": 380,
+      "total": 437
+    },
+    {
       "id": 1783710250661,
       "token": "#10",
       "room": "101",
-      "status": "NEW",
+      "status": "DELIVERED",
       "createdAt": 1783710249984,
       "deliveryPreference": "ALL_AT_ONCE",
       "items": "[{\"id\":1783710249977.484,\"name\":\"hgjh\",\"qty\":1,\"price\":4,\"status\":\"PENDING\"}]",
@@ -150,10 +152,10 @@
       "id": 1783709930841,
       "token": "#31",
       "room": "101",
-      "status": "NEW",
+      "status": "DELIVERED",
       "createdAt": 1783709930769,
       "deliveryPreference": "ALL_AT_ONCE",
-      "items": "[{\"id\":1783709930767.0933,\"name\":\"Chocolate Lava Cake\",\"qty\":1,\"price\":220,\"status\":\"PENDING\"}]",
+      "items": "[{\"id\":1783709930767.0933,\"name\":\"Chocolate Lava Cake\",\"qty\":1,\"price\":220,\"status\":\"DISPATCHED\"}]",
       "note": "",
       "subtotal": 220,
       "total": 253

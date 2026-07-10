@@ -3,10 +3,10 @@ import { C } from '../../constants/theme';
 
 export const GlobalStyles = () => (
   <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@300;400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; }
-    h1, h2, h3, .serif { font-family: 'Poppins', 'Inter', system-ui, sans-serif; font-weight: 700; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+    h1, h2, h3, .serif { font-family: inherit; font-weight: 700; }
     body { background: ${C.sand}; color: ${C.text}; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
     
     ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -30,7 +30,7 @@ export const GlobalStyles = () => (
     button:active { transform: scale(0.97); }
     button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
     
-    input, textarea, select { font-family: 'Plus Jakarta Sans', sans-serif; outline: none; }
+    input, textarea, select { font-family: inherit; outline: none; }
     
     @media print {
       body * { visibility: hidden; }

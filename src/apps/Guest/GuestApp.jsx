@@ -208,7 +208,7 @@ export const GuestApp = ({ config = CONFIG }) => {
 
   useEffect(() => {
     const link = document.createElement('link');
-    link.href = 'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap';
+    link.href = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap';
     link.rel = 'stylesheet';
     document.head.appendChild(link);
     return () => { document.head.removeChild(link); };
@@ -419,7 +419,7 @@ export const GuestApp = ({ config = CONFIG }) => {
       <style>{`
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .serif { font-family: 'Playfair Display', Georgia, serif; }
+        .serif { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
         @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
         .animate-slide-up { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -455,13 +455,13 @@ export const GuestApp = ({ config = CONFIG }) => {
         <div className="animate-fade-in">
           {/* Sticky Header */}
           <div className="guest-header" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(255,255,255,0.88)', backdropFilter: 'blur(14px)', padding: '18px 20px', boxShadow: '0 10px 26px rgba(15,27,43,0.05)', borderBottom: `1px solid ${C.borderLight}` }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <h1 className="serif" style={{ color: C.emerald, fontSize: 20, margin: 0, fontWeight: 800 }}>{config?.shortName}</h1>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: socketConnected ? '#10B981' : C.danger, boxShadow: socketConnected ? '0 0 8px #10B981' : 'none' }}></div>
+                  <h1 style={{ color: C.text, fontSize: 18, margin: 0, fontWeight: 800, letterSpacing: -0.3 }}>{config?.shortName}</h1>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: socketConnected ? '#10B981' : C.danger, boxShadow: socketConnected ? '0 0 8px rgba(16,185,129,0.55)' : 'none' }}></div>
                 </div>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: ACCENT_BLUE, fontSize: 13, marginTop: 5, background: `${ACCENT_BLUE}12`, padding: '4px 10px', borderRadius: 8 }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: ACCENT_BLUE, fontSize: 12.5, marginTop: 5, background: `${ACCENT_BLUE}10`, padding: '4px 10px', borderRadius: 999 }}>
                   <MapPin size={12} />
                   <span style={{ fontWeight: 750 }}>Room {roomNumber}</span>
                 </div>
@@ -477,7 +477,7 @@ export const GuestApp = ({ config = CONFIG }) => {
             </div>
 
             {/* Search */}
-            <div style={{ marginTop: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{ marginTop: 14, display: 'flex', gap: 10, alignItems: 'center' }}>
               <div style={{ flex: 1, position: 'relative' }}>
                 <Search size={16} color={C.textMuted} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)' }} />
                 <input
@@ -497,22 +497,6 @@ export const GuestApp = ({ config = CONFIG }) => {
             </div>
 
             {/* Category Tabs */}
-            <div className="hide-scrollbar" style={{ display: 'flex', gap: 10, overflowX: 'auto', marginTop: 16, paddingBottom: 6, scrollSnapType: 'x proximity' }}>
-              {categories.map(cat => {
-                const isSelected = activeCategory === cat;
-                const isRecommended = cat === mealConfig.defaultCategory;
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => setActiveCategory(cat)}
-                    style={{ whiteSpace: 'nowrap', padding: '10px 18px', borderRadius: 999, fontSize: 13, fontWeight: 700, border: `1px solid ${isSelected ? C.text : C.border}`, background: isSelected ? C.text : C.white, color: isSelected ? C.white : C.textSub, boxShadow: isSelected ? '0 10px 20px rgba(15,27,43,0.12)' : '0 6px 16px rgba(15,27,43,0.04)', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', transition: 'all 0.2s', fontFamily: 'inherit', scrollSnapAlign: 'start' }}
-                  >
-                    {isRecommended && <Clock size={12} />}
-                    {cat}
-                  </button>
-                );
-              })}
-            </div>
           </div>
 
           {/* Body */}
@@ -578,6 +562,22 @@ export const GuestApp = ({ config = CONFIG }) => {
             {/* Full Menu List */}
             <div>
               <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 800, color: C.text }}>Our Menu</h3>
+              <div className="hide-scrollbar" style={{ display: 'flex', gap: 10, overflowX: 'auto', marginBottom: 16, paddingBottom: 6, scrollSnapType: 'x proximity' }}>
+                {categories.map(cat => {
+                  const isSelected = activeCategory === cat;
+                  const isRecommended = cat === mealConfig.defaultCategory;
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setActiveCategory(cat)}
+                      style={{ whiteSpace: 'nowrap', padding: '10px 18px', borderRadius: 999, fontSize: 13, fontWeight: 700, border: `1px solid ${isSelected ? C.text : C.border}`, background: isSelected ? C.text : C.white, color: isSelected ? C.white : C.textSub, boxShadow: isSelected ? '0 10px 20px rgba(15,27,43,0.12)' : '0 6px 16px rgba(15,27,43,0.04)', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', transition: 'all 0.2s', fontFamily: 'inherit', scrollSnapAlign: 'start' }}
+                    >
+                      {isRecommended && <Clock size={12} />}
+                      {cat}
+                    </button>
+                  );
+                })}
+              </div>
               <div className="guest-menu-list" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {displayedItems.map((item, idx) => {
                   const qty = getQty(item.id);

@@ -11,7 +11,7 @@ export const QuantityControl = ({ qty, onIncrease, onDecrease, onAdd }) => {
         onClick={onAdd}
         style={{ background: ACCENT_SOFT, color: C.text, padding: '6px 6px 6px 14px', borderRadius: 24, fontWeight: 800, fontSize: 14, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s' }}
       >
-        ADD <div style={{ background: ACCENT, color: C.white, width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 16 }}>+</div>
+        ADD <div style={{ background: ACCENT, color: C.white, width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 18, lineHeight: 1, userSelect: 'none' }}>+</div>
       </button>
     );
   }
