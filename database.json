@@ -1,0 +1,205 @@
+{
+  "menu_items": [
+    {
+      "id": 2,
+      "name": "Margherita Pizza",
+      "desc": "Classic San Marzano tomato sauce, fresh mozzarella, and basil",
+      "price": 380,
+      "category": "Mains",
+      "isVeg": 1,
+      "available": 1,
+      "image": "https://images.unsplash.com/photo-1604068549290-dea0e4a30536?w=400&q=80"
+    },
+    {
+      "id": 3,
+      "name": "Eggs Benedict",
+      "desc": "Poached eggs on English muffins with hollandaise",
+      "price": 320,
+      "category": "Breakfast",
+      "isVeg": 0,
+      "available": 1,
+      "image": "https://images.unsplash.com/photo-1608039829572-78524f79c4c7?w=400&q=80"
+    },
+    {
+      "id": 4,
+      "name": "Avocado Toast",
+      "desc": "Smashed avocado on sourdough with cherry tomatoes",
+      "price": 290,
+      "category": "Breakfast",
+      "isVeg": 1,
+      "available": 1,
+      "image": "https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=400&q=80"
+    },
+    {
+      "id": 5,
+      "name": "Buffalo Wings",
+      "desc": "Spicy chicken wings with blue cheese dip",
+      "price": 280,
+      "category": "Starters",
+      "isVeg": 0,
+      "available": 1,
+      "image": "https://images.unsplash.com/photo-1524114664604-cd8133cd67ad?w=400&q=80"
+    },
+    {
+      "id": 6,
+      "name": "Caesar Salad",
+      "desc": "Crisp romaine, parmesan, croutons, classic dressing",
+      "price": 250,
+      "category": "Starters",
+      "isVeg": 1,
+      "available": 1,
+      "image": "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&q=80"
+    },
+    {
+      "id": 7,
+      "name": "Grilled Salmon",
+      "desc": "Atlantic salmon with asparagus and lemon butter",
+      "price": 550,
+      "category": "Mains",
+      "isVeg": 0,
+      "available": 1,
+      "image": "https://images.unsplash.com/photo-1485921325833-c519f76c4927?w=400&q=80"
+    },
+    {
+      "id": 8,
+      "name": "Tiramisu",
+      "desc": "Classic Italian coffee-flavored dessert",
+      "price": 260,
+      "category": "Desserts",
+      "isVeg": 1,
+      "available": 1,
+      "image": "https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?w=400&q=80"
+    },
+    {
+      "id": 9,
+      "name": "Fresh Orange Juice",
+      "desc": "Freshly squeezed oranges",
+      "price": 150,
+      "category": "Beverages",
+      "isVeg": 1,
+      "available": 1,
+      "image": "https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=400&q=80"
+    },
+    {
+      "id": 10,
+      "name": "Chocolate Lava Cake",
+      "desc": "Warm chocolate cake with molten center",
+      "price": 220,
+      "category": "Desserts",
+      "isVeg": 1,
+      "available": 1,
+      "image": "https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=400&q=80"
+    }
+  ],
+  "room_bills": [
+    {
+      "room": "101",
+      "billId": "bill_1715000000_1",
+      "guestName": "John Smith",
+      "checkIn": "2026-07-10",
+      "checkOut": "2026-07-14",
+      "roomCharge": 4500,
+      "roomServiceCharges": "[{\"orderId\":1783702661122,\"amount\":2461,\"time\":\"12:02 AM\",\"desc\":\"Truffle Mushroom Risotto ×1, Margherita Pizza ×3, Grilled Salmon ×1\"}]",
+      "status": "OPEN"
+    },
+    {
+      "room": "102",
+      "billId": "bill_1715000000_2",
+      "guestName": "Sarah Connor",
+      "checkIn": "2026-07-09",
+      "checkOut": "2026-07-12",
+      "roomCharge": 3800,
+      "roomServiceCharges": "[]",
+      "status": "OPEN"
+    },
+    {
+      "room": "103",
+      "billId": "bill_1715000000_3",
+      "guestName": "Michael Rossi",
+      "checkIn": "2026-07-10",
+      "checkOut": "2026-07-15",
+      "roomCharge": 5200,
+      "roomServiceCharges": "[]",
+      "status": "OPEN"
+    },
+    {
+      "room": "104",
+      "billId": "",
+      "guestName": "",
+      "checkIn": "",
+      "checkOut": "",
+      "roomCharge": 0,
+      "roomServiceCharges": "[]",
+      "status": "CLOSED"
+    }
+  ],
+  "orders": [
+    {
+      "id": 1783710250661,
+      "token": "#10",
+      "room": "101",
+      "status": "NEW",
+      "createdAt": 1783710249984,
+      "deliveryPreference": "ALL_AT_ONCE",
+      "items": "[{\"id\":1783710249977.484,\"name\":\"hgjh\",\"qty\":1,\"price\":4,\"status\":\"PENDING\"}]",
+      "note": "",
+      "subtotal": 4,
+      "total": 4.6
+    },
+    {
+      "id": 1783709930841,
+      "token": "#31",
+      "room": "101",
+      "status": "NEW",
+      "createdAt": 1783709930769,
+      "deliveryPreference": "ALL_AT_ONCE",
+      "items": "[{\"id\":1783709930767.0933,\"name\":\"Chocolate Lava Cake\",\"qty\":1,\"price\":220,\"status\":\"PENDING\"}]",
+      "note": "",
+      "subtotal": 220,
+      "total": 253
+    },
+    {
+      "id": 1783708898455,
+      "token": "#40",
+      "room": "101",
+      "status": "DELIVERED",
+      "createdAt": 1783708897950,
+      "deliveryPreference": "ALL_AT_ONCE",
+      "items": "[{\"id\":1783708897948.4927,\"name\":\"hgjh\",\"qty\":1,\"price\":4,\"status\":\"DISPATCHED\"},{\"id\":1783708897948.3596,\"name\":\"Truffle Mushroom Risotto\",\"qty\":1,\"price\":450,\"status\":\"DISPATCHED\"}]",
+      "note": "",
+      "subtotal": 454,
+      "total": 522.1
+    },
+    {
+      "id": 1783702661122,
+      "token": "#62",
+      "room": "101",
+      "status": "DELIVERED",
+      "createdAt": 1783702660145,
+      "deliveryPreference": "AS_READY",
+      "items": "[{\"id\":1783702660144.708,\"name\":\"Truffle Mushroom Risotto\",\"qty\":1,\"price\":450,\"status\":\"DISPATCHED\"},{\"id\":1783702660144.738,\"name\":\"Margherita Pizza\",\"qty\":3,\"price\":380,\"status\":\"DISPATCHED\"},{\"id\":1783702660144.7222,\"name\":\"Grilled Salmon\",\"qty\":1,\"price\":550,\"status\":\"DISPATCHED\"}]",
+      "note": "",
+      "subtotal": 2140,
+      "total": 2461
+    },
+    {
+      "id": 1783702601901,
+      "token": "#29",
+      "room": "101",
+      "status": "DELIVERED",
+      "createdAt": 1783702600931,
+      "deliveryPreference": "AS_READY",
+      "items": "[{\"id\":1783702600929.3823,\"name\":\"Truffle Mushroom Risotto [Spicy]\",\"qty\":1,\"price\":450,\"status\":\"DISPATCHED\"}]",
+      "note": "",
+      "subtotal": 450,
+      "total": 517.5
+    }
+  ],
+  "config": {
+    "adminPin": "1234",
+    "kitchenPin": "1111",
+    "cgst": 2.5,
+    "sgst": 2.5,
+    "serviceCharge": 10
+  }
+}

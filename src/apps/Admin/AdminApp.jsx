@@ -3,11 +3,12 @@ import {
   LayoutDashboard, UtensilsCrossed, Printer, X, Plus, ClipboardList, 
   TrendingUp, Package, Star, Clock, Trash2, CheckCircle2, ChevronRight, 
   AlertCircle, DollarSign, Edit3, BarChart2, Coffee, ShieldCheck, ArrowRight,
-  User, Check, ShieldAlert, Award
+  User, Check, ShieldAlert, Award, Search
 } from 'lucide-react';
 import { C } from '../../constants/theme';
 import { Card } from '../../components/ui/Card';
 import { VegDot } from '../../components/ui/VegDot';
+import { PinGate } from '../../components/auth/PinGate';
 import { CONFIG } from '../../config';
 
 // Unsplash presets for beautiful food pictures
@@ -19,14 +20,30 @@ const IMAGE_PRESETS = [
   { name: 'Chocolate Dessert', url: 'https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=400&q=80' },
   { name: 'Premium Coffee', url: 'https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=400&q=80' },
 ];
+import { useStore } from '../../store/useStore';
 
-export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills, setRoomBills, socketConnected, config = CONFIG }) => {
+export const AdminApp = ({ config = CONFIG }) => {
+  const orders = useStore(state => state.orders);
+  const setOrders = useStore(state => state.setOrders);
+  const menuItems = useStore(state => state.menuItems);
+  const setMenuItems = useStore(state => state.setMenuItems);
+  const roomBills = useStore(state => state.roomBills);
+  const setRoomBills = useStore(state => state.setRoomBills);
+  const socketConnected = useStore(state => state.socketConnected);
+  const adminAuth = useStore(state => state.adminAuth);
+  const login = useStore(state => state.login);
+  const logout = useStore(state => state.logout);
+  const configObj = useStore(state => state.config);
+  const setConfig = useStore(state => state.setConfig);
+
   const [activeSection, setActiveSection] = useState('dashboard');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [selectedRoom, setSelectedRoom] = useState('');
   const [showAddChargeModal, setShowAddChargeModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [menuSearch, setMenuSearch] = useState('');
+  const [billSearch, setBillSearch] = useState('');
   const [activeMenuCategory, setActiveMenuCategory] = useState('All');
   
   // New menu item form state
@@ -61,7 +78,8 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
     return roomBills.find(b => b.room === selectedRoom) || null;
   }, [roomBills, selectedRoom]);
 
-  // Locked to hotel room service — always room mode
+  // Determine if location mode is hotel
+  const isHotel = true;
   const locationLabel = 'Room';
 
   const calculateBillTotals = (bill) => {
@@ -105,7 +123,6 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
     };
     setMenuItems([createdItem, ...menuItems]);
     setShowAddItemModal(false);
-    // Reset form
     setNewItem({
       name: '',
       desc: '',
@@ -114,6 +131,35 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
       isVeg: true,
       image: IMAGE_PRESETS[0].url
     });
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('image', file);
+
+    try {
+      const token = sessionStorage.getItem('adminToken');
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setNewItem({ ...newItem, image: data.imageUrl });
+      } else {
+        alert('Image upload failed');
+      }
+    } catch (err) {
+      console.error('Error uploading image', err);
+      alert('Upload failed: ' + err.message);
+    }
   };
 
   // Toggle item availability
@@ -146,11 +192,15 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
 
   // Lock or unlock bill status
   const toggleBillStatus = () => {
-    setRoomBills(roomBills.map(b => 
-      b.room === selectedRoom 
-        ? { ...b, status: b.status === 'OPEN' ? 'CLOSED' : 'OPEN' }
-        : b
-    ));
+    setRoomBills(roomBills.map(b => {
+      if (b.room === selectedRoom) {
+        const newStatus = b.status === 'OPEN' ? 'CLOSED' : 'OPEN';
+        // When opening a new bill, generate a new billId to bind to guest sessions
+        const newBillId = newStatus === 'OPEN' ? `bill_${Date.now()}_${Math.floor(Math.random()*1000)}` : undefined;
+        return { ...b, status: newStatus, billId: newStatus === 'OPEN' ? newBillId : b.billId };
+      }
+      return b;
+    }));
   };
 
   // Update specific order status in the active pipeline
@@ -193,27 +243,79 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
       .slice(0, 3);
   }, [orders]);
 
+  const filteredMenuItems = useMemo(() => {
+    return menuItems.filter(item => {
+      const matchesSearch = item.name.toLowerCase().includes(menuSearch.toLowerCase()) || (item.desc && item.desc.toLowerCase().includes(menuSearch.toLowerCase()));
+      const matchesCategory = activeMenuCategory === 'All' || item.category === activeMenuCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [menuItems, menuSearch, activeMenuCategory]);
+
+  const menuStats = useMemo(() => {
+    const total = menuItems.length;
+    const available = menuItems.filter(item => item.available).length;
+    const veg = menuItems.filter(item => item.isVeg).length;
+    const avgPrice = total > 0 ? Math.round(menuItems.reduce((sum, item) => sum + Number(item.price || 0), 0) / total) : 0;
+
+    return [
+      { label: 'Total dishes', value: total },
+      { label: 'Available now', value: available },
+      { label: 'Veg dishes', value: veg },
+      { label: 'Avg price', value: `₹${avgPrice}` },
+    ];
+  }, [menuItems]);
+
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'billing', label: 'Billing & POS', icon: ClipboardList },
     { id: 'orders', label: 'Live Orders', icon: Package, badge: orders.filter(o => o.status === 'NEW' || o.status === 'PREPARING').length },
     { id: 'menu', label: 'Menu Editor', icon: UtensilsCrossed },
     { id: 'reports', label: 'Reports', icon: TrendingUp },
+    { id: 'settings', label: 'Settings', icon: Edit3 },
   ];
+
+  if (!adminAuth) {
+    return <PinGate role="admin" onLogin={login} />;
+  }
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: C.sand, fontFamily: '"Plus Jakarta Sans", sans-serif', color: C.text }}>
       
       {/* SIDEBAR */}
-      <div style={{ width: 280, background: C.emerald, color: C.white, display: 'flex', flexDirection: 'column', padding: '32px 24px', position: 'sticky', top: 0, height: '100vh', boxShadow: '4px 0 24px rgba(7,20,40,0.05)' }} className="no-print">
-        <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 48 }}>
-          <div style={{ background: 'rgba(255,255,255,0.08)', padding: 12, borderRadius: 16, border: '1px solid rgba(255,255,255,0.1)' }}>
+      <div 
+        style={{ 
+          width: isSidebarCollapsed ? 88 : 280, 
+          background: C.emerald, 
+          color: C.white, 
+          display: 'flex', 
+          flexDirection: 'column', 
+          padding: isSidebarCollapsed ? '32px 12px' : '32px 24px', 
+          position: 'sticky', 
+          top: 0, 
+          height: '100vh', 
+          boxShadow: '4px 0 24px rgba(7,20,40,0.05)',
+          transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          overflow: 'hidden'
+        }} 
+        className="no-print"
+      >
+        <div 
+          onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          style={{ 
+            display: 'flex', gap: 14, alignItems: 'center', marginBottom: 48, 
+            cursor: 'pointer',
+            justifyContent: isSidebarCollapsed ? 'center' : 'flex-start'
+          }}
+        >
+          <div style={{ background: 'rgba(255,255,255,0.08)', padding: 12, borderRadius: 16, border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }}>
             <LayoutDashboard size={26} color={C.brassLight} />
           </div>
-          <div>
-            <h1 className="serif" style={{ fontSize: 20, color: C.brassLight, fontWeight: 700, margin: 0, lineHeight: 1.2, letterSpacing: 0.5 }}>{config?.shortName}</h1>
-            <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4, fontWeight: 600, letterSpacing: 1.5, textTransform: 'uppercase' }}>Console</div>
-          </div>
+          {!isSidebarCollapsed && (
+            <div style={{ whiteSpace: 'nowrap', opacity: isSidebarCollapsed ? 0 : 1, transition: 'opacity 0.3s' }}>
+              <h1 className="serif" style={{ fontSize: 20, color: C.brassLight, fontWeight: 700, margin: 0, lineHeight: 1.2, letterSpacing: 0.5 }}>{config?.shortName}</h1>
+              <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4, fontWeight: 600, letterSpacing: 1.5, textTransform: 'uppercase' }}>Console</div>
+            </div>
+          )}
         </div>
 
         {/* NAVIGATION LINKS */}
@@ -225,18 +327,18 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
               <button 
                 key={item.id} 
                 onClick={() => setActiveSection(item.id)}
+                title={isSidebarCollapsed ? item.label : undefined}
                 style={{ 
                   display: 'flex', 
                   alignItems: 'center', 
-                  justifyContent: 'space-between',
-                  padding: '14px 18px', 
+                  justifyContent: isSidebarCollapsed ? 'center' : 'space-between',
+                  padding: isSidebarCollapsed ? '14px 0' : '14px 18px', 
                   borderRadius: 16, 
-                  background: isActive ? 'rgba(255, 255, 255, 0.08)' : 'transparent', 
-                  color: isActive ? C.white : 'rgba(255,255,255,0.65)', 
+                  background: isActive ? C.emeraldMid : 'transparent', 
+                  color: isActive ? C.text : 'rgba(255,255,255,0.65)', 
                   border: 'none',
-                  borderLeft: isActive ? `4px solid ${C.brass}` : '4px solid transparent', 
                   textAlign: 'left', 
-                  fontWeight: isActive ? 700 : 500, 
+                  fontWeight: isActive ? 800 : 500, 
                   fontSize: 14.5,
                   cursor: 'pointer',
                   transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)' 
@@ -244,7 +346,7 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
                 onMouseEnter={e => {
                   if (!isActive) {
                     e.currentTarget.style.color = C.white;
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
                   }
                 }}
                 onMouseLeave={e => {
@@ -254,11 +356,11 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
                   }
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <Icon size={19} /> 
-                  <span>{item.label}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, justifyContent: 'center' }}>
+                  <Icon size={20} color={isActive ? C.text : 'currentColor'} strokeWidth={isActive ? 2.5 : 2} style={{ flexShrink: 0 }} />
+                  {!isSidebarCollapsed && <span style={{ whiteSpace: 'nowrap' }}>{item.label}</span>}
                 </div>
-                {item.badge > 0 && (
+                {!isSidebarCollapsed && item.badge > 0 && (
                   <span style={{ background: C.brass, color: C.emerald, fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 999, minWidth: 20, textAlign: 'center' }}>
                     {item.badge}
                   </span>
@@ -269,21 +371,26 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
         </nav>
 
         {/* SYSTEM STATUS FOOTER */}
-        <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 16, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, border: '1px solid rgba(255,255,255,0.05)' }}>
-          <div style={{ width: 10, height: 10, borderRadius: '50%', background: socketConnected ? '#10B981' : C.danger, boxShadow: socketConnected ? '0 0 10px #10B981' : '0 0 10px ' + C.danger }}></div>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.white }}>{socketConnected ? 'Console Online' : 'Offline Mode'}</div>
-            <div style={{ fontSize: 10, opacity: 0.5, marginTop: 2 }}>{socketConnected ? 'Live Connection Sync' : 'Reconnecting server...'}</div>
-          </div>
+        <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 16, padding: isSidebarCollapsed ? '14px 0' : '14px 16px', display: 'flex', alignItems: 'center', justifyContent: isSidebarCollapsed ? 'center' : 'flex-start', gap: 12, border: '1px solid rgba(255,255,255,0.05)', marginBottom: 12 }}>
+          <div style={{ width: 10, height: 10, borderRadius: '50%', background: socketConnected ? '#10B981' : C.danger, boxShadow: socketConnected ? '0 0 10px #10B981' : '0 0 10px ' + C.danger, flexShrink: 0 }}></div>
+          {!isSidebarCollapsed && (
+            <div style={{ whiteSpace: 'nowrap' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.white }}>{socketConnected ? 'Console Online' : 'Offline Mode'}</div>
+              <div style={{ fontSize: 10, opacity: 0.5, marginTop: 2 }}>{socketConnected ? 'Live Connection Sync' : 'Reconnecting...'}</div>
+            </div>
+          )}
         </div>
+        <button onClick={() => logout('admin')} title="Logout" style={{ padding: '10px', background: 'rgba(239, 68, 68, 0.1)', color: '#FCA5A5', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', justifyContent: 'center' }}>
+          Lock Console
+        </button>
       </div>
 
       {/* MAIN VIEWPORT */}
-      <div style={{ flex: 1, padding: '40px 48px', overflowY: 'auto', maxHeight: '100vh' }} className="no-print">
+      <div style={{ flex: 1, padding: '40px 48px', minHeight: '100vh', overflowY: 'visible' }} className="no-print">
         
         {/* DASHBOARD SECTION */}
         {activeSection === 'dashboard' && (
-          <div className="animate-fade-up">
+          <div className="animate-fade-in">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 32 }}>
               <div>
                 <h2 className="serif" style={{ fontSize: 32, fontWeight: 800, color: C.text, margin: 0 }}>Executive Overview</h2>
@@ -433,263 +540,271 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
 
         {/* BILLING & POS SECTION */}
         {activeSection === 'billing' && (
-          <div className="animate-fade-up">
-            <div style={{ marginBottom: 28 }}>
-              <h2 className="serif" style={{ fontSize: 32, fontWeight: 800, color: C.text, margin: 0 }}>Folio & POS Billing</h2>
-              <p style={{ color: C.textSub, fontSize: 14, marginTop: 6 }}>Manage customer accounts, add customized food orders to bills, and print tax invoices.</p>
-            </div>
-
-            {/* LOCATION SELECTOR ROW */}
-            <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 16, marginBottom: 28 }} className="hide-scrollbar">
-              {roomBills.map(bill => {
-                const isSelected = selectedRoom === bill.room;
-                return (
-                  <div
-                    key={bill.room}
-                    onClick={() => setSelectedRoom(bill.room)}
-                    style={{
-                      background: isSelected ? C.emerald : C.white,
-                      color: isSelected ? C.white : C.text,
-                      border: `1.5px solid ${isSelected ? C.emerald : C.border}`,
-                      borderRadius: 18,
-                      padding: '16px 20px',
-                      minWidth: 160,
-                      cursor: 'pointer',
-                      boxShadow: isSelected ? '0 8px 24px rgba(7,20,40,0.1)' : 'none',
-                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
-                    }}
+          <div className="animate-fade-in">
+            {/* 3-COLUMN POS BILLING LAYOUT */}
+            <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 32, alignItems: 'start', minHeight: 'calc(100vh - 120px)' }}>
+              
+              {/* COLUMN 2: BILLS LIST */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16, background: C.white, borderRadius: 24, padding: 20, border: `1px solid ${C.border}`, boxShadow: '0 8px 24px rgba(15,27,43,0.03)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h2 className="serif" style={{ fontSize: 24, fontWeight: 800, color: C.text, margin: 0 }}>Bills</h2>
+                  <button 
+                    onClick={() => {
+                      const nextRoom = prompt('Enter Room Number to Open:');
+                      if (nextRoom) {
+                        const check = roomBills.find(b => String(b.room) === String(nextRoom));
+                        if (check) {
+                          setRoomBills(roomBills.map(b => String(b.room) === String(nextRoom) ? { ...b, status: 'OPEN', billId: `bill_${Date.now()}` } : b));
+                          setSelectedRoom(nextRoom);
+                        } else {
+                          const name = prompt('Guest Name:');
+                          const checkIn = new Date().toISOString().split('T')[0];
+                          setRoomBills([...roomBills, { room: nextRoom, billId: `bill_${Date.now()}`, guestName: name || 'Guest', checkIn, checkOut: '', roomCharge: 0, roomServiceCharges: [], status: 'OPEN' }]);
+                          setSelectedRoom(nextRoom);
+                        }
+                      }
+                    }} 
+                    style={{ background: C.borderLight, color: C.text, width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 16, fontWeight: 800 }}>{locationLabel} {bill.room}</span>
-                      <span style={{ 
-                        fontSize: 10, 
-                        fontWeight: 700, 
-                        padding: '2px 6px', 
-                        borderRadius: 6,
-                        background: isSelected ? 'rgba(255,255,255,0.15)' : C.borderLight,
-                        color: isSelected ? C.white : C.textSub
-                      }}>{bill.status}</span>
-                    </div>
-                    <div style={{ fontSize: 12, opacity: isSelected ? 0.8 : 0.6, marginTop: 8, fontWeight: 500 }}>
-                      {bill.guestName}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                    <Plus size={18} />
+                  </button>
+                </div>
 
-            {activeBill ? (
-              <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.2fr', gap: 32, alignItems: 'start' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
-                  
-                  {/* GUEST ACCOUNT INFO */}
-                  <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none', padding: 28 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                      <h3 className="serif" style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: 0 }}>Guest Profile</h3>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: activeBill.status === 'OPEN' ? '#10B981' : C.danger }}></span>
-                        <span style={{ fontSize: 12, fontWeight: 800, color: C.textSub, textTransform: 'uppercase', letterSpacing: 1 }}>{activeBill.status}</span>
-                      </div>
-                    </div>
-                    
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
-                      <div>
-                        <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>Guest Name</div>
-                        <div style={{ fontWeight: 800, fontSize: 16, marginTop: 6, color: C.text }}>{activeBill.guestName}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>Check In Date</div>
-                        <div style={{ fontWeight: 800, fontSize: 16, marginTop: 6, color: C.text }}>{activeBill.checkIn}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>Check Out Date</div>
-                        <div style={{ fontWeight: 800, fontSize: 16, marginTop: 6, color: C.text }}>{activeBill.checkOut}</div>
-                      </div>
-                    </div>
-                  </Card>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: C.textSub, fontSize: 13, fontWeight: 700, margin: '4px 0' }}>
+                  <div style={{ cursor: 'pointer' }}>All rooms ▾</div>
+                  <div style={{ cursor: 'pointer' }}>Today ▾</div>
+                </div>
 
-                  {/* ROOM SERVICE CHARGES FOLIO */}
-                  <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none', padding: 0, overflow: 'hidden' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 28px', background: C.borderLight, borderBottom: `1px solid ${C.border}` }}>
-                      <div>
-                        <h3 className="serif" style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>Room Dining Folio</h3>
-                        <span style={{ fontSize: 11, color: C.textSub, marginTop: 2, display: 'inline-block' }}>Itemized logs of room delivery charges</span>
-                      </div>
-                      {activeBill.status === 'OPEN' && (
-                        <button 
-                          onClick={() => setShowAddChargeModal(true)}
+                {/* SCROLLABLE BILLS LIST */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 'calc(100vh - 270px)', overflowY: 'auto', paddingRight: 4 }}>
+                  {roomBills
+                    .filter(b => String(b.room).includes(billSearch) || (b.guestName && b.guestName.toLowerCase().includes(billSearch.toLowerCase())))
+                    .map(bill => {
+                      const isSelected = selectedRoom === bill.room;
+                      const totals = calculateBillTotals(bill);
+                      const checkInDate = bill.checkIn ? new Date(bill.checkIn).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'N/A';
+                      
+                      return (
+                        <div
+                          key={bill.room}
+                          onClick={() => setSelectedRoom(bill.room)}
                           style={{
-                            background: C.emerald,
-                            color: C.white,
-                            border: 'none',
-                            borderRadius: 12,
-                            padding: '10px 18px',
-                            fontSize: 13,
-                            fontWeight: 700,
+                            background: isSelected ? `${C.emerald}02` : C.white,
+                            border: `1.5px solid ${isSelected ? C.brass : C.border}`,
+                            borderLeft: `4px solid ${isSelected ? C.brass : C.border}`,
+                            borderRadius: 18,
+                            padding: '16px 20px',
                             cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6
+                            boxShadow: isSelected ? '0 8px 24px rgba(15,27,43,0.06)' : 'none',
+                            transition: 'all 0.2s',
                           }}
                         >
-                          <Plus size={16} /> Link Order
-                        </button>
-                      )}
-                    </div>
-                    
-                    <div style={{ padding: 28 }}>
-                      {!activeBill.roomServiceCharges || activeBill.roomServiceCharges.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '40px 0', color: C.textSub }}>
-                          <AlertCircle size={40} color={C.border} style={{ margin: '0 auto 12px' }} />
-                          <div style={{ fontWeight: 700, fontSize: 15 }}>No F&B Charges Yet</div>
-                          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Add a delivered room order to append to invoice.</div>
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                          {activeBill.roomServiceCharges.map((charge, idx) => (
-                            <div key={idx} style={{ display: 'flex', justifyItems: 'space-between', borderBottom: idx < activeBill.roomServiceCharges.length - 1 ? `1px solid ${C.borderLight}` : 'none', paddingBottom: idx < activeBill.roomServiceCharges.length - 1 ? 16 : 0 }}>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                  <span style={{ fontWeight: 800, fontSize: 15 }}>Order {charge.orderId}</span>
-                                  <span style={{ fontSize: 11, color: C.textMuted, background: C.borderLight, padding: '2px 8px', borderRadius: 4 }}>{charge.time}</span>
-                                </div>
-                                <div style={{ fontSize: 13, color: C.textSub, marginTop: 6, lineHeight: 1.4 }}>{charge.desc}</div>
-                              </div>
-                              <div style={{ fontWeight: 800, fontSize: 16, color: C.emerald }}>₹{charge.amount.toFixed(2)}</div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 16, fontWeight: 800, color: C.text }}>Room {bill.room}</span>
+                              <span style={{ 
+                                fontSize: 10, 
+                                fontWeight: 800, 
+                                padding: '2px 8px', 
+                                borderRadius: 8,
+                                background: bill.status === 'OPEN' ? '#FEF3C7' : C.borderLight,
+                                color: bill.status === 'OPEN' ? '#D97706' : C.textSub
+                              }}>{bill.status === 'OPEN' ? 'Active' : 'Closed'}</span>
                             </div>
-                          ))}
+                            <span style={{ fontSize: 16, fontWeight: 800, color: C.text }}>₹{totals.grandTotal.toFixed(0)}</span>
+                          </div>
+                          
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 13, color: C.textSub }}>
+                            <span>{bill.guestName || 'Vacant'}</span>
+                            <span style={{ fontSize: 12, color: C.textMuted }}>{checkInDate}</span>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  </Card>
+                      );
+                    })}
                 </div>
 
-                {/* INVOICE BILL BOARD */}
-                <Card style={{ border: `1.5px solid ${C.emerald}`, boxShadow: 'none', padding: 28, position: 'sticky', top: 32 }}>
-                  <h3 className="serif" style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: '0 0 20px 0' }}>Folio Bill Ledger</h3>
-                  
-                  {isHotel && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, fontSize: 14 }}>
-                      <span style={{ color: C.textSub, fontWeight: 500 }}>Room Accommodation Charge</span>
-                      <span style={{ fontWeight: 700 }}>₹{activeTotals.roomTotal.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, fontSize: 14 }}>
-                    <span style={{ color: C.textSub, fontWeight: 500 }}>Room Dining Subtotal</span>
-                    <span style={{ fontWeight: 700 }}>₹{activeTotals.serviceTotal.toFixed(2)}</span>
-                  </div>
-                  
-                  <div style={{ borderTop: `1px solid ${C.border}`, margin: '16px 0' }}></div>
-                  
-                  {isHotel && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 12, color: C.textMuted }}>
-                      <span>Room GST / Luxury Tax (12%)</span>
-                      <span>₹{activeTotals.roomTax.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20, fontSize: 12, color: C.textMuted }}>
-                    <span>Food & Beverage SGST+CGST (15%)</span>
-                    <span>₹{activeTotals.serviceTax.toFixed(2)}</span>
-                  </div>
-                  
-                  <div style={{ borderTop: `2px dashed ${C.border}`, paddingTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 28 }}>
-                    <div>
-                      <span style={{ fontWeight: 800, fontSize: 15, textTransform: 'uppercase', letterSpacing: 0.5, color: C.text }}>Grand Total</span>
-                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>Taxes & service charge inclusive</div>
-                    </div>
-                    <span style={{ fontWeight: 800, fontSize: 28, color: C.emerald, lineHeight: 1 }}>₹{activeTotals.grandTotal.toFixed(0)}</span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <button 
-                      onClick={() => setShowPrintModal(true)} 
-                      style={{ 
-                        width: '100%', 
-                        padding: '14px', 
-                        borderRadius: 14, 
-                        background: 'none',
-                        border: `1.5px solid ${C.emerald}`, 
-                        color: C.emerald, 
-                        fontWeight: 700, 
-                        display: 'flex', 
-                        justifyContent: 'center', 
-                        alignItems: 'center', 
-                        gap: 8,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <Printer size={18} /> Print Folio Receipt
-                    </button>
-                    <button 
-                      onClick={toggleBillStatus} 
-                      style={{ 
-                        width: '100%', 
-                        padding: '14px', 
-                        borderRadius: 14, 
-                        background: activeBill.status === 'OPEN' ? C.text : C.borderLight, 
-                        color: activeBill.status === 'OPEN' ? C.white : C.text, 
-                        border: 'none',
-                        fontWeight: 700,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {activeBill.status === 'OPEN' ? `🔒 Check-out & Close Bill` : '🔓 Reopen Ledger Folio'}
-                    </button>
-                  </div>
-                </Card>
+                {/* SEARCH BAR AT BOTTOM */}
+                <div style={{ position: 'relative', marginTop: 4 }}>
+                  <Search size={16} color={C.textMuted} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)' }} />
+                  <input 
+                    type="text" 
+                    placeholder="Search room..." 
+                    value={billSearch} 
+                    onChange={e => setBillSearch(e.target.value)} 
+                    style={{ width: '100%', padding: '12px 14px 12px 38px', borderRadius: 14, border: `1.5px solid ${C.border}`, fontSize: 13, background: C.sand, color: C.text }}
+                  />
+                </div>
               </div>
-            ) : (
-              <div style={{ background: C.white, borderRadius: 20, padding: 48, textAlign: 'center', border: `1px solid ${C.border}` }}>
-                <AlertCircle size={48} color={C.border} style={{ margin: '0 auto 16px' }} />
-                <h3 className="serif" style={{ fontSize: 20, margin: 0 }}>No Location Folios Registered</h3>
-                <p style={{ color: C.textSub, fontSize: 14, marginTop: 8 }}>Please configure the default locations or scan room QR codes.</p>
-              </div>
-            )}
 
-            {/* ADD CHARGE MODAL */}
-            {showAddChargeModal && (
-              <div style={{ position: 'fixed', inset: 0, background: 'rgba(7,20,40,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
-                <div className="animate-pop animate-pop-in" style={{ background: C.white, borderRadius: 24, padding: 32, width: 520, maxWidth: '90%', boxShadow: '0 24px 64px rgba(7,20,40,0.15)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                    <h3 className="serif" style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Link F&B Order to {locationLabel} {selectedRoom}</h3>
-                    <button onClick={() => setShowAddChargeModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} color={C.textMuted} /></button>
-                  </div>
-                  
-                  <div style={{ fontSize: 13, color: C.textSub, marginBottom: 20 }}>Select a completed order to link onto this bill folio.</div>
-                  
-                  <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {unbilledDeliveredOrders.length === 0 ? (
-                      <div style={{ padding: 36, background: C.sand, borderRadius: 18, textAlign: 'center', color: C.textMuted }}>
-                        <ShieldCheck size={32} color={C.textMuted} style={{ opacity: 0.3, margin: '0 auto 12px' }} />
-                        <div style={{ fontWeight: 700, fontSize: 14 }}>All Orders Already Billed</div>
-                        <div style={{ fontSize: 12, marginTop: 4 }}>No unbilled delivered orders exist for {locationLabel} {selectedRoom}.</div>
+              {/* COLUMN 3: BILL DETAILS */}
+              <div style={{ flex: 1, background: C.white, borderRadius: 24, padding: 24, border: `1px solid ${C.border}`, boxShadow: '0 8px 24px rgba(15,27,43,0.03)', display: 'flex', flexDirection: 'column', gap: 24 }}>
+                {activeBill ? (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <h2 className="serif" style={{ fontSize: 24, fontWeight: 800, color: C.text, margin: 0 }}>Room {activeBill.room} Folio</h2>
+                      <span style={{ 
+                        fontSize: 12, 
+                        fontWeight: 800, 
+                        padding: '6px 16px', 
+                        borderRadius: 12,
+                        background: activeBill.status === 'OPEN' ? '#FEF3C7' : C.borderLight,
+                        color: activeBill.status === 'OPEN' ? '#D97706' : C.textSub
+                      }}>{activeBill.status === 'OPEN' ? 'Active' : 'Closed'}</span>
+                    </div>
+
+                    {/* DETAILS GRID */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, padding: '16px 0', borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}` }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Room</div>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginTop: 4 }}>{activeBill.room}</div>
                       </div>
-                    ) : (
-                      unbilledDeliveredOrders.map(o => (
-                        <div key={o.id} style={{ border: `1px solid ${C.border}`, borderRadius: 16, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: 14 }}>Order {o.token}</div>
-                            <div style={{ fontSize: 12, color: C.textSub, marginTop: 4, maxWidth: 260, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {o.items.map(i => `${i.name}`).join(', ')}
+                      <div>
+                        <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Check In</div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: C.text, marginTop: 4 }}>{activeBill.checkIn || 'N/A'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Customer</div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: C.text, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{activeBill.guestName || 'Vacant'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Check Out</div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: C.text, marginTop: 4 }}>{activeBill.checkOut || 'Active'}</div>
+                      </div>
+                    </div>
+
+                    {/* ITEMISED CHARGES */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                        <h4 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: C.text }}>Itemised Charges</h4>
+                        {activeBill.status === 'OPEN' && (
+                          <button 
+                            onClick={() => setShowAddChargeModal(true)}
+                            style={{ background: C.borderLight, color: C.text, border: 'none', padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                          >
+                            + Link Order
+                          </button>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 'calc(100vh - 490px)', overflowY: 'auto', paddingRight: 4 }}>
+                        {isHotel && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 14, background: C.sand, borderRadius: 16 }}>
+                            <div style={{ width: 40, height: 40, borderRadius: 10, background: '#E6FBFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>🏨</div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 750, fontSize: 14 }}>Room Accommodation</div>
+                              <div style={{ fontSize: 11, color: C.textSub, marginTop: 2 }}>Daily stay room charges</div>
                             </div>
-                            <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>{o.minutesAgo} min ago</div>
+                            <div style={{ fontWeight: 800, fontSize: 14 }}>₹{activeTotals.roomTotal.toFixed(0)}</div>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                            <div style={{ fontWeight: 800, color: C.emerald, fontSize: 15 }}>₹{o.total}</div>
-                            <button 
-                              onClick={() => attachOrderToBill(o)}
-                              style={{ background: C.emerald, color: C.white, border: 'none', padding: '8px 16px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-                            >
-                              Add
-                            </button>
+                        )}
+
+                        {!activeBill.roomServiceCharges || activeBill.roomServiceCharges.length === 0 ? (
+                          <div style={{ textAlign: 'center', padding: '32px 0', color: C.textSub, border: `1px dashed ${C.border}`, borderRadius: 16 }}>
+                            <AlertCircle size={32} color={C.border} style={{ margin: '0 auto 8px' }} />
+                            <div style={{ fontWeight: 700, fontSize: 13 }}>No Food & Beverage Charges Linked</div>
                           </div>
+                        ) : (
+                          activeBill.roomServiceCharges.map((charge, idx) => (
+                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 14, background: C.sand, borderRadius: 16 }}>
+                              <div style={{ width: 40, height: 40, borderRadius: 10, background: '#FFF7E6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>🍔</div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 750, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span>Order #{charge.orderId}</span>
+                                  <span style={{ fontSize: 10, color: C.textMuted }}>{charge.time}</span>
+                                </div>
+                                <div style={{ fontSize: 11, color: C.textSub, marginTop: 2, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: 300 }}>{charge.desc}</div>
+                              </div>
+                              <div style={{ fontWeight: 800, fontSize: 14, marginRight: 8 }}>₹{charge.amount.toFixed(0)}</div>
+                              {activeBill.status === 'OPEN' && (
+                                <button 
+                                  onClick={() => {
+                                    setRoomBills(roomBills.map(b => 
+                                      b.room === selectedRoom 
+                                        ? { ...b, roomServiceCharges: b.roomServiceCharges.filter((_, i) => i !== idx) }
+                                        : b
+                                    ));
+                                  }}
+                                  style={{ color: C.danger, padding: 4, cursor: 'pointer' }}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* TOTALS & BILL LEDGER */}
+                    <div style={{ background: C.sand, borderRadius: 20, padding: 20, marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: C.textSub }}>
+                        <span>Room Charges Subtotal</span>
+                        <span>₹{activeTotals.roomTotal.toFixed(0)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: C.textSub }}>
+                        <span>Room Dining Subtotal</span>
+                        <span>₹{activeTotals.serviceTotal.toFixed(0)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: C.textMuted }}>
+                        <span>Taxes (12% Accommodation + 15% F&B)</span>
+                        <span>₹{(activeTotals.roomTax + activeTotals.serviceTax).toFixed(0)}</span>
+                      </div>
+                      
+                      <div style={{ borderTop: `1.5px dashed ${C.border}`, margin: '8px 0' }}></div>
+                      
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <span style={{ fontWeight: 800, fontSize: 14, color: C.text }}>Grand Total</span>
                         </div>
-                      ))
-                    )}
+                        <span style={{ fontWeight: 900, fontSize: 24, color: C.emerald }}>₹{activeTotals.grandTotal.toFixed(0)}</span>
+                      </div>
+                    </div>
+
+                    {/* ACTIONS BAR */}
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      <button 
+                        onClick={() => setShowPrintModal(true)} 
+                        style={{ 
+                          padding: '16px', 
+                          borderRadius: 16, 
+                          background: 'none',
+                          border: `1.5px solid ${C.border}`, 
+                          color: C.text, 
+                          display: 'flex', 
+                          justifyContent: 'center', 
+                          alignItems: 'center', 
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <Printer size={20} />
+                      </button>
+                      <button 
+                        onClick={toggleBillStatus} 
+                        style={{ 
+                          flex: 1,
+                          padding: '16px', 
+                          borderRadius: 16, 
+                          background: activeBill.status === 'OPEN' ? '#FCD34D' : C.borderLight, 
+                          color: activeBill.status === 'OPEN' ? '#1E293B' : C.text, 
+                          border: 'none',
+                          fontWeight: 800,
+                          fontSize: 15,
+                          cursor: 'pointer',
+                          boxShadow: activeBill.status === 'OPEN' ? '0 4px 12px rgba(252, 211, 77, 0.2)' : 'none'
+                        }}
+                      >
+                        {activeBill.status === 'OPEN' ? `Charge Customer & Check-out ₹${activeTotals.grandTotal.toFixed(0)}` : 'Reopen Bill Folio'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ padding: '64px 0', textAlign: 'center', color: C.textMuted }}>
+                    <AlertCircle size={48} style={{ opacity: 0.2, margin: '0 auto 16px' }} />
+                    <h3 style={{ margin: 0 }}>Select a bill from the side to view ledger</h3>
                   </div>
-                </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
         )}
 
@@ -805,207 +920,167 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
 
         {/* MENU EDITOR SECTION */}
         {activeSection === 'menu' && (
-          <div className="animate-fade-up">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
-              <div>
-                <h2 className="serif" style={{ fontSize: 32, fontWeight: 800, color: C.text, margin: 0 }}>Menu Manager</h2>
-                <p style={{ color: C.textSub, fontSize: 14, marginTop: 6 }}>Manage your dishes, price points, and active delivery toggles.</p>
-              </div>
-              <button 
-                onClick={() => setShowAddItemModal(true)}
-                style={{ 
-                  background: C.emerald, 
-                  color: C.white, 
-                  border: 'none',
-                  borderRadius: 14, 
-                  padding: '12px 24px', 
-                  fontSize: 14, 
-                  fontWeight: 700, 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: 8,
-                  cursor: 'pointer',
-                  boxShadow: '0 8px 24px rgba(7,20,40,0.1)'
-                }}
-              >
-                <Plus size={18} /> Add New Dish
-              </button>
-            </div>
-
-            {/* FILTERS & SEARCH ROW */}
-            <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 28 }}>
-              <div style={{ position: 'relative', flex: 1 }}>
-                <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: C.textMuted }}><ClipboardList size={18} /></span>
-                <input 
-                  type="text" 
-                  placeholder="Search item name or recipe details..." 
-                  value={menuSearch} 
-                  onChange={e => setMenuSearch(e.target.value)}
-                  style={{ width: '100%', padding: '14px 16px 14px 48px', borderRadius: 16, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.white, color: C.text }}
-                />
-              </div>
-
-              {/* CATEGORY SELECTOR CAROUSEL */}
-              <div style={{ display: 'flex', gap: 8 }}>
-                {['All', 'Breakfast', 'Starters', 'Mains', 'Desserts', 'Beverages'].map(category => {
-                  const isActive = activeMenuCategory === category;
-                  return (
-                    <button
-                      key={category}
-                      onClick={() => setActiveMenuCategory(category)}
-                      style={{
-                        padding: '10px 18px',
-                        borderRadius: 12,
-                        background: isActive ? C.brass : C.white,
-                        color: isActive ? C.white : C.textSub,
-                        border: `1.5px solid ${isActive ? C.brass : C.border}`,
-                        fontSize: 13,
-                        fontWeight: 700,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {category}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* ITEMS GRID */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
-              {menuItems
-                .filter(item => {
-                  const matchesSearch = item.name.toLowerCase().includes(menuSearch.toLowerCase()) || (item.desc && item.desc.toLowerCase().includes(menuSearch.toLowerCase()));
-                  const matchesCategory = activeMenuCategory === 'All' || item.category === activeMenuCategory;
-                  return matchesSearch && matchesCategory;
-                })
-                .map(item => (
-                  <Card key={item.id} style={{ padding: 0, overflow: 'hidden', border: `1px solid ${C.border}`, boxShadow: 'none', display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ height: 160, position: 'relative', overflow: 'hidden' }}>
-                      <img src={item.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80'} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      <div style={{ position: 'absolute', top: 12, left: 12 }}>
-                        <span style={{ background: 'rgba(7,20,40,0.6)', backdropFilter: 'blur(4px)', color: C.white, fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 6, textTransform: 'uppercase' }}>
-                          {item.category}
-                        </span>
-                      </div>
-                      <div style={{ position: 'absolute', top: 12, right: 12 }}>
-                        <VegDot isVeg={item.isVeg} />
-                      </div>
-                    </div>
-
-                    <div style={{ padding: 20, flex: 1, display: 'flex', flexDirection: 'column' }}>
-                      <h4 style={{ fontWeight: 800, fontSize: 16, margin: '0 0 6px 0', color: C.text }}>{item.name}</h4>
-                      <p style={{ fontSize: 12.5, color: C.textSub, margin: '0 0 16px 0', lineHeight: 1.4, flex: 1 }}>{item.desc}</p>
-                      
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 800, fontSize: 18, color: C.emerald }}>₹{item.price}</span>
-                        
-                        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                          {/* Availability Toggle */}
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                            <input 
-                              type="checkbox" 
-                              checked={item.available} 
-                              onChange={() => toggleItemAvailability(item.id)}
-                              style={{ cursor: 'pointer' }}
-                            />
-                            <span style={{ fontSize: 11, fontWeight: 700, color: item.available ? C.emerald : C.textMuted }}>
-                              {item.available ? 'Available' : 'Disabled'}
-                            </span>
-                          </label>
-
-                          <button 
-                            onClick={() => handleDeleteItem(item.id)}
-                            style={{ background: C.dangerLight, border: 'none', color: C.danger, padding: 8, borderRadius: 8, cursor: 'pointer' }}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-            </div>
-
-            {/* ADD DISH MODAL */}
-            {showAddItemModal && (
-              <div style={{ position: 'fixed', inset: 0, background: 'rgba(7,20,40,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
-                <div className="animate-pop animate-pop-in" style={{ background: C.white, borderRadius: 24, padding: 32, width: 500, maxWidth: '90%', boxShadow: '0 24px 64px rgba(7,20,40,0.15)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                    <h3 className="serif" style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Add New Dish</h3>
-                    <button onClick={() => setShowAddItemModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} color={C.textMuted} /></button>
+          <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            <Card style={{ border: `1px solid ${C.border}`, boxShadow: '0 20px 48px rgba(15,27,43,0.04)', borderRadius: 28, background: 'linear-gradient(180deg, #FFFFFF 0%, #FBFDFF 100%)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20, marginBottom: 24 }}>
+                <div style={{ maxWidth: 700 }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderRadius: 999, background: C.emeraldLight, color: C.brass, fontSize: 12, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 14 }}>
+                    Menu Management
                   </div>
+                  <h2 className="serif" style={{ fontSize: 34, fontWeight: 800, color: C.text, margin: 0, letterSpacing: -0.8 }}>All Menu</h2>
+                  <p style={{ color: C.textSub, fontSize: 14, marginTop: 8, maxWidth: 560, lineHeight: 1.6 }}>
+                    Manage dish images, availability, categories, and pricing from one polished workspace.
+                  </p>
+                </div>
 
-                  <form onSubmit={handleAddItem} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Item Name</label>
-                      <input required autoFocus value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14 }} placeholder="e.g. Gourmet Club Sandwich" />
-                    </div>
+                <button
+                  onClick={() => setShowAddItemModal(true)}
+                  style={{
+                    background: 'linear-gradient(135deg, #FF7A3D 0%, #F97316 100%)',
+                    color: C.white,
+                    border: 'none',
+                    borderRadius: 999,
+                    padding: '14px 22px',
+                    fontSize: 14,
+                    fontWeight: 800,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    cursor: 'pointer',
+                    boxShadow: '0 14px 28px rgba(249,115,22,0.26)'
+                  }}
+                >
+                  <Plus size={18} strokeWidth={2.5} /> Add Menu
+                </button>
+              </div>
 
-                    <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Description / Recipe Details</label>
-                      <input value={newItem.desc} onChange={e => setNewItem({...newItem, desc: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14 }} placeholder="e.g. Double layered bread with smoked bacon, eggs, poultry..." />
-                    </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 14, marginBottom: 24 }}>
+                {menuStats.map(stat => (
+                  <div key={stat.label} style={{ border: `1px solid ${C.border}`, borderRadius: 20, background: C.white, padding: 16 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: 0.6 }}>{stat.label}</div>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: C.text, marginTop: 8 }}>{stat.value}</div>
+                  </div>
+                ))}
+              </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Price (₹)</label>
-                        <input required type="number" min="0" value={newItem.price} onChange={e => setNewItem({...newItem, price: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14 }} placeholder="0" />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Category</label>
-                        <select value={newItem.category} onChange={e => setNewItem({...newItem, category: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.white }}>
-                          {['Breakfast', 'Starters', 'Mains', 'Desserts', 'Beverages'].map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                      </div>
-                    </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 14, alignItems: 'center', marginBottom: 18 }}>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 18, top: '50%', transform: 'translateY(-50%)', color: C.textMuted }}><ClipboardList size={18} /></span>
+                  <input
+                    type="text"
+                    placeholder="Search menu items or recipe details"
+                    value={menuSearch}
+                    onChange={e => setMenuSearch(e.target.value)}
+                    style={{ width: '100%', padding: '15px 18px 15px 50px', borderRadius: 18, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.sand, color: C.text }}
+                  />
+                </div>
 
-                    <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Select Food Image Preset</label>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 10 }}>
-                        {IMAGE_PRESETS.map((p, i) => (
-                          <div 
-                            key={i} 
-                            onClick={() => setNewItem({ ...newItem, image: p.url })}
-                            style={{ 
-                              height: 60, 
-                              borderRadius: 10, 
-                              overflow: 'hidden', 
-                              border: newItem.image === p.url ? `3px solid ${C.brass}` : `1px solid ${C.border}`, 
-                              cursor: 'pointer',
-                              position: 'relative'
-                            }}
-                          >
-                            <img src={p.url} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.6)', color: C.white, fontSize: 8, padding: '2px 0', textAlign: 'center', fontWeight: 600 }}>{p.name.split('/')[0]}</div>
-                          </div>
-                        ))}
-                      </div>
-                      <input 
-                        type="text" 
-                        value={newItem.image} 
-                        onChange={e => setNewItem({ ...newItem, image: e.target.value })}
-                        placeholder="Or input custom Image URL..." 
-                        style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 13 }}
-                      />
-                    </div>
-
-                    <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                        <input type="radio" checked={newItem.isVeg} onChange={() => setNewItem({...newItem, isVeg: true})} /> Veg Dot
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                        <input type="radio" checked={!newItem.isVeg} onChange={() => setNewItem({...newItem, isVeg: false})} /> Non-Veg Dot
-                      </label>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 12 }}>
-                      <button type="button" onClick={() => setShowAddItemModal(false)} style={{ padding: '12px 24px', borderRadius: 12, border: 'none', background: 'none', color: C.textSub, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
-                      <button type="submit" style={{ background: C.emerald, color: C.white, border: 'none', padding: '12px 24px', borderRadius: 12, fontWeight: 700, cursor: 'pointer' }}>Publish Dish</button>
-                    </div>
-                  </form>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {['All', 'Breakfast', 'Starters', 'Mains', 'Desserts', 'Beverages'].map(category => {
+                    const isActive = activeMenuCategory === category;
+                    return (
+                      <button
+                        key={category}
+                        onClick={() => setActiveMenuCategory(category)}
+                        style={{
+                          padding: '10px 16px',
+                          borderRadius: 999,
+                          background: isActive ? C.text : C.white,
+                          color: isActive ? C.white : C.textSub,
+                          border: `1.5px solid ${isActive ? C.text : C.border}`,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        {category}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
+            </Card>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(235px, 1fr))', gap: 18 }}>
+              {filteredMenuItems.map(item => (
+                <Card key={item.id} style={{ padding: 0, overflow: 'hidden', border: `1px solid ${C.border}`, boxShadow: '0 12px 24px rgba(15,27,43,0.05)', borderRadius: 22, display: 'flex', flexDirection: 'column', background: C.white }}>
+                  <div style={{ position: 'relative', minHeight: 146, maxHeight: 146, background: C.emeraldLight }}>
+                    <img
+                      src={item.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80'}
+                      alt={item.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+                    <div style={{ position: 'absolute', top: 14, left: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ background: 'rgba(7,20,40,0.72)', backdropFilter: 'blur(8px)', color: C.white, fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 999, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        {item.category}
+                      </span>
+                      <span style={{ background: item.available ? 'rgba(16,185,129,0.9)' : 'rgba(148,163,184,0.95)', color: C.white, fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 999, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        {item.available ? 'Available' : 'Disabled'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                        <h4 style={{ fontWeight: 800, fontSize: 16, margin: 0, color: C.text, lineHeight: 1.2 }}>{item.name}</h4>
+                        <VegDot isVeg={item.isVeg} />
+                      </div>
+                      <p style={{ fontSize: 12.5, color: C.textSub, margin: '6px 0 0 0', lineHeight: 1.45 }}>{item.desc}</p>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginTop: 'auto' }}>
+                      <div style={{ padding: '10px 12px', borderRadius: 14, background: C.borderLight }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase' }}>Item Type</div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginTop: 4 }}>{item.isVeg ? 'Veg' : 'Non-Veg'}</div>
+                      </div>
+                      <div style={{ padding: '10px 12px', borderRadius: 14, background: C.borderLight }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase' }}>Pricing</div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginTop: 4 }}>₹{item.price}</div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingTop: 2 }}>
+                      <button
+                        onClick={() => toggleItemAvailability(item.id)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '9px 12px',
+                          borderRadius: 999,
+                          background: item.available ? 'rgba(34,197,94,0.10)' : 'rgba(148,163,184,0.12)',
+                          color: item.available ? '#15803D' : C.textMuted,
+                          border: 'none',
+                          fontSize: 12.5,
+                          fontWeight: 800,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <div style={{ width: 28, height: 16, borderRadius: 999, background: item.available ? '#16A34A' : '#CBD5E1', padding: 2, display: 'flex', alignItems: 'center' }}>
+                          <div style={{ width: 14, height: 14, borderRadius: '50%', background: C.white, transform: `translateX(${item.available ? 12 : 0}px)`, transition: 'transform 0.2s ease' }} />
+                        </div>
+                        {item.available ? 'Available' : 'Disabled'}
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteItem(item.id)}
+                        style={{ background: C.dangerLight, border: 'none', color: C.danger, padding: '9px 10px', borderRadius: 12, cursor: 'pointer', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}
+                      >
+                        <Trash2 size={14} /> Delete
+                      </button>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+
+            {filteredMenuItems.length === 0 && (
+              <Card style={{ textAlign: 'center', padding: '52px 24px', border: `1px dashed ${C.border}`, background: C.white, borderRadius: 24 }}>
+                <h3 className="serif" style={{ fontSize: 22, margin: 0, color: C.text }}>No menu items found</h3>
+                <p style={{ color: C.textSub, fontSize: 14, marginTop: 8 }}>Try a different search or category, or add a new dish.</p>
+              </Card>
             )}
           </div>
         )}
@@ -1193,6 +1268,68 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
             </div>
           </div>
         )}
+
+        {/* SETTINGS SECTION */}
+        {activeSection === 'settings' && (
+          <div className="animate-fade-up">
+            <div style={{ marginBottom: 28 }}>
+              <h2 className="serif" style={{ fontSize: 32, fontWeight: 800, color: C.text, margin: 0 }}>System Settings</h2>
+              <p style={{ color: C.textSub, fontSize: 14, marginTop: 6 }}>Configure application behavior, security PINs, and tax rates.</p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 600 }}>
+              <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none' }}>
+                <h3 className="serif" style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: '0 0 20px 0' }}>Security PINs</h3>
+                
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Admin Console PIN</label>
+                  <input 
+                    type="text" 
+                    value={configObj?.adminPin || ''}
+                    onChange={e => setConfig({ adminPin: e.target.value })}
+                    style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14 }}
+                  />
+                </div>
+                
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Kitchen Display PIN</label>
+                  <input 
+                    type="text" 
+                    value={configObj?.kitchenPin || ''}
+                    onChange={e => setConfig({ kitchenPin: e.target.value })}
+                    style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14 }}
+                  />
+                </div>
+              </Card>
+
+              <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none' }}>
+                <h3 className="serif" style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: '0 0 20px 0' }}>Tax & Service Configuration</h3>
+                
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Room Accommodation Tax (%)</label>
+                  <input 
+                    type="number" 
+                    step="0.1"
+                    value={configObj?.taxRates?.roomTax || 12}
+                    onChange={e => setConfig({ taxRates: { ...configObj.taxRates, roomTax: parseFloat(e.target.value) } })}
+                    style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14 }}
+                  />
+                </div>
+                
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>F&B Service Tax (SGST+CGST) (%)</label>
+                  <input 
+                    type="number" 
+                    step="0.1"
+                    value={configObj?.taxRates?.serviceTax || 15}
+                    onChange={e => setConfig({ taxRates: { ...configObj.taxRates, serviceTax: parseFloat(e.target.value) } })}
+                    style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14 }}
+                  />
+                </div>
+              </Card>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* TAX INVOICE PRINT VIEW COMPONENT (Only shown in DOM when print modal is open) */}
@@ -1313,6 +1450,117 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
                   Print Document
                 </button>
              </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADD CHARGE MODAL */}
+      {showAddChargeModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(7,20,40,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
+          <div className="animate-pop animate-pop-in" style={{ background: C.white, borderRadius: 24, padding: 32, width: 520, maxWidth: '90%', boxShadow: '0 24px 64px rgba(7,20,40,0.15)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h3 className="serif" style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Link F&B Order to {locationLabel} {selectedRoom}</h3>
+              <button onClick={() => setShowAddChargeModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} color={C.textMuted} /></button>
+            </div>
+            
+            <div style={{ fontSize: 13, color: C.textSub, marginBottom: 20 }}>Select a completed order to link onto this bill folio.</div>
+            
+            <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {unbilledDeliveredOrders.length === 0 ? (
+                <div style={{ padding: 36, background: C.sand, borderRadius: 18, textAlign: 'center', color: C.textMuted }}>
+                  <ShieldCheck size={32} color={C.textMuted} style={{ opacity: 0.3, margin: '0 auto 12px' }} />
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>All Orders Already Billed</div>
+                  <div style={{ fontSize: 12, marginTop: 4 }}>No unbilled delivered orders exist for {locationLabel} {selectedRoom}.</div>
+                </div>
+              ) : (
+                unbilledDeliveredOrders.map(o => (
+                  <div key={o.id} style={{ border: `1px solid ${C.border}`, borderRadius: 16, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>Order {o.token}</div>
+                      <div style={{ fontSize: 12, color: C.textSub, marginTop: 4, maxWidth: 260, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {o.items.map(i => `${i.name}`).join(', ')}
+                      </div>
+                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>{o.minutesAgo} min ago</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <div style={{ fontWeight: 800, color: C.emerald, fontSize: 15 }}>₹{o.total}</div>
+                      <button 
+                        onClick={() => attachOrderToBill(o)}
+                        style={{ background: C.emerald, color: C.white, border: 'none', padding: '8px 16px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADD DISH DRAWER */}
+      {showAddItemModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(7,20,40,0.5)', zIndex: 9999, display: 'flex', justifyContent: 'flex-end', backdropFilter: 'blur(4px)' }}>
+          <div className="animate-fade-up" style={{ background: C.white, padding: '40px 32px', width: 480, height: '100%', boxShadow: '-8px 0 32px rgba(0,0,0,0.1)', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+              <h3 className="serif" style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Add New Dish</h3>
+              <button onClick={() => setShowAddItemModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} color={C.textMuted} /></button>
+            </div>
+
+            <form onSubmit={handleAddItem} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Item Name</label>
+                <input required autoFocus value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14 }} placeholder="e.g. Gourmet Club Sandwich" />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Description / Recipe Details</label>
+                <input value={newItem.desc} onChange={e => setNewItem({...newItem, desc: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14 }} placeholder="e.g. Double layered bread with smoked bacon, eggs, poultry..." />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Price (₹)</label>
+                  <input required type="number" min="0" value={newItem.price} onChange={e => setNewItem({...newItem, price: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14 }} placeholder="0" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Category</label>
+                  <select value={newItem.category} onChange={e => setNewItem({...newItem, category: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.white }}>
+                    {['Breakfast', 'Starters', 'Mains', 'Desserts', 'Beverages'].map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Upload Food Image</label>
+                <input 
+                  type="file" 
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 13, marginBottom: 12 }}
+                />
+                {newItem.image && (
+                  <div style={{ height: 100, borderRadius: 10, overflow: 'hidden', border: `1px solid ${C.border}`, position: 'relative' }}>
+                    <img src={newItem.image} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  <input type="radio" checked={newItem.isVeg} onChange={() => setNewItem({...newItem, isVeg: true})} /> Veg Dot
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  <input type="radio" checked={!newItem.isVeg} onChange={() => setNewItem({...newItem, isVeg: false})} /> Non-Veg Dot
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 12 }}>
+                <button type="button" onClick={() => setShowAddItemModal(false)} style={{ padding: '12px 24px', borderRadius: 12, border: 'none', background: 'none', color: C.textSub, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+                <button type="submit" style={{ background: C.emerald, color: C.white, border: 'none', padding: '12px 24px', borderRadius: 12, fontWeight: 700, cursor: 'pointer' }}>Publish Dish</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -15,11 +15,13 @@ export const GlobalStyles = () => (
     .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     
     @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     @keyframes popIn { 0% { transform: scale(0.9); opacity: 0; } 60% { transform: scale(1.05); } 100% { transform: scale(1); opacity: 1; } }
     @keyframes pulseBadge { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
     @keyframes pulseDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } }
     
     .animate-fade-up { animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    .animate-fade-in { animation: fadeIn 0.25s ease-out forwards; }
     .animate-pop { animation: popIn 0.3s ease-out forwards; }
     .animate-pulse-badge { animation: pulseBadge 0.3s ease-out; }
     .animate-pulse-dot { animation: pulseDot 1.5s infinite; }

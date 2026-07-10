@@ -10,13 +10,18 @@
     "preview": "vite preview --host"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.101.2",
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
     "lucide-react": "^1.12.0",
+    "multer": "^2.2.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+    "react-router-dom": "^7.18.1",
     "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
