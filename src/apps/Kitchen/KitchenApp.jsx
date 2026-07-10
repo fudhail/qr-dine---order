@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChefHat, CheckCircle, Circle, MapPin, AlertTriangle, Plus, Trash2, PackageCheck } from 'lucide-react';
+import { ChefHat, CheckCircle, Circle, MapPin, AlertTriangle } from 'lucide-react';
 import { C } from '../../constants/theme';
 import { Card } from '../../components/ui/Card';
 import { VegDot } from '../../components/ui/VegDot';
@@ -20,6 +20,16 @@ export const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketC
   const updateStatus = (id, newStatus) => {
     setOrders(orders.map(o => o.id === id ? { ...o, status: newStatus } : o));
     if (selectedOrderId === id) setSelectedOrderId(null);
+  };
+
+  // Mark all items as DELIVERED when dispatching
+  const markDelivered = (orderId) => {
+    setOrders(orders.map(o => {
+      if (o.id === orderId) {
+        return { ...o, status: 'DELIVERED', items: o.items.map(i => ({ ...i, status: 'DISPATCHED' })) };
+      }
+      return o;
+    }));
   };
 
   // Cycle: PENDING → DONE → PENDING (tapping done item reverts it unless dispatched)
@@ -70,7 +80,7 @@ export const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketC
     const allDone = (doneCount + dispatchedCount) === order.items.length;
     const hasDoneItems = doneCount > 0;
     const isNew = order.status === 'NEW';
-    const isCompleted = order.status === 'ON_THE_WAY' || order.status === 'DELIVERED';
+    const isCompleted = order.status === 'DELIVERED';
 
     return (
       <Card
@@ -156,7 +166,7 @@ export const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketC
             </button>
           ) : isCompleted ? (
             <div style={{ textAlign: 'center', color: C.info, fontWeight: 700, fontSize: 14, padding: '10px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-              <CheckCircle size={18} /> Order Dispatched
+              <CheckCircle size={18} /> Delivered to Room
             </div>
           ) : (
             <>
@@ -180,10 +190,10 @@ export const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketC
               ) : (
                 allDone ? (
                   <button
-                    onClick={() => updateStatus(order.id, 'ON_THE_WAY')}
+                    onClick={() => markDelivered(order.id)}
                     style={{ width: '100%', background: C.emeraldMid, color: C.white, padding: '14px', borderRadius: 12, fontWeight: 700, fontSize: 15, display: 'flex', justifyContent: 'center', gap: 8 }}
                   >
-                    🚀 Dispatch Full Order
+                    ✅ Mark as Delivered
                   </button>
                 ) : (
                   <div style={{ textAlign: 'center', color: C.textMuted, fontWeight: 600, fontSize: 14, padding: '10px 0' }}>
@@ -199,7 +209,7 @@ export const KitchenApp = ({ orders, setOrders, menuItems, setMenuItems, socketC
   };
 
   const activeOrders = orders.filter(o => o.status === 'NEW' || o.status === 'PREPARING');
-  const completedOrders = orders.filter(o => o.status === 'ON_THE_WAY' || o.status === 'DELIVERED');
+  const completedOrders = orders.filter(o => o.status === 'DELIVERED');
 
   return (
     <div style={{ height: '100vh', background: C.borderLight, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

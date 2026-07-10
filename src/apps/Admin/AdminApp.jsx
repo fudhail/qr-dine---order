@@ -61,17 +61,15 @@ export const AdminApp = ({ orders, setOrders, menuItems, setMenuItems, roomBills
     return roomBills.find(b => b.room === selectedRoom) || null;
   }, [roomBills, selectedRoom]);
 
-  // Operational metrics
-  const isHotel = config?.deploymentMode !== 'TABLE_DINING';
-  const locationLabel = isHotel ? 'Room' : 'Table';
+  // Locked to hotel room service — always room mode
+  const locationLabel = 'Room';
 
-  // Calculate bill totals
   const calculateBillTotals = (bill) => {
     if (!bill) return { roomTotal: 0, serviceTotal: 0, roomTax: 0, serviceTax: 0, grandTotal: 0 };
-    const roomTotal = isHotel ? (bill.roomCharge || 0) : 0; // Cover charges / reservation charges for table
+    const roomTotal = bill.roomCharge || 0;
     const serviceTotal = bill.roomServiceCharges ? bill.roomServiceCharges.reduce((sum, c) => sum + c.amount, 0) : 0;
     const roomTax = roomTotal * 0.12;
-    const serviceTax = serviceTotal * 0.15; // 15% combined F&B taxes
+    const serviceTax = serviceTotal * 0.15;
     return {
       roomTotal,
       serviceTotal,
