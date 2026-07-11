@@ -296,12 +296,12 @@ export const GuestApp = ({ config = CONFIG }) => {
       setCart([]);
       setSpecialNote('');
       setDeliveryPreference('ALL_AT_ONCE');
-      if (currentScreen !== 'sos') {
-        showToast('Order received at central pantry!');
-        setCurrentScreen('tracking');
-      } else {
-        showToast('SOS ALARM TRIGGERED! Staff are responding.');
-      }
+      showToast('Order received at central pantry!');
+      setCurrentScreen('tracking');
+    };
+
+    const handleSosAccepted = (data) => {
+      showToast('SOS ALARM TRIGGERED! Staff are responding.');
     };
 
     const handleOutOfStock = (data) => {
@@ -310,11 +310,13 @@ export const GuestApp = ({ config = CONFIG }) => {
 
     socket.on('order_rejected', handleRejected);
     socket.on('order_accepted', handleAccepted);
+    socket.on('sos_accepted', handleSosAccepted);
     socket.on('item_out_of_stock_alert', handleOutOfStock);
 
     return () => {
       socket.off('order_rejected', handleRejected);
       socket.off('order_accepted', handleAccepted);
+      socket.off('sos_accepted', handleSosAccepted);
       socket.off('item_out_of_stock_alert', handleOutOfStock);
     };
   }, []);
