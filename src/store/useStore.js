@@ -24,6 +24,8 @@ export const useStore = create((set, get) => ({
   orders: [],
   menuItems: [],
   roomBills: [],
+  feedback: [],
+  stations: [],
   config: { cgst: 2.5, sgst: 2.5, serviceCharge: 10, adminPin: '', kitchenPin: '' },
   adminAuth: sessionStorage.getItem('adminAuth') === 'true',
   kitchenAuth: sessionStorage.getItem('kitchenAuth') === 'true',
@@ -45,7 +47,8 @@ export const useStore = create((set, get) => ({
     syncWithServer('/api/admin/room_bills', roomBills);
   },
   setConfig: (newConfig) => {
-    const config = typeof newConfig === 'function' ? newConfig(get().config) : newConfig;
+    const current = get().config;
+    const config = typeof newConfig === 'function' ? newConfig(current) : { ...current, ...newConfig };
     set({ config });
     syncWithServer('/api/admin/config', config);
   },
@@ -92,7 +95,7 @@ export const useStore = create((set, get) => ({
 
   // Socket init function
   initSocket: () => {
-    socket.on('connect', () => {
+    const handleConnect = () => {
       console.log('Socket connected');
       set({ socketConnected: true });
       
@@ -100,7 +103,12 @@ export const useStore = create((set, get) => ({
       if (token) {
         socket.emit('join_admin', { token });
       }
-    });
+    };
+
+    socket.on('connect', handleConnect);
+    if (socket.connected) {
+      handleConnect();
+    }
     
     socket.on('disconnect', () => {
       console.log('Socket disconnected');
@@ -117,7 +125,9 @@ export const useStore = create((set, get) => ({
         orders: data.orders || state.orders,
         menuItems: data.menuItems || state.menuItems,
         roomBills: data.roomBills || state.roomBills,
-        config: data.config || state.config
+        config: data.config || state.config,
+        feedback: data.feedback || state.feedback,
+        stations: data.stations || state.stations
       }));
     };
     

@@ -84,7 +84,7 @@
   "room_bills": [
     {
       "room": "101",
-      "billId": "bill_1715000000_1",
+      "billId": "bill_1783712169414_379",
       "guestName": "John Smith",
       "checkIn": "2026-07-10",
       "checkOut": "2026-07-14",
@@ -124,6 +124,30 @@
     }
   ],
   "orders": [
+    {
+      "id": 1783780844231,
+      "token": "#16",
+      "room": "101",
+      "status": "ON_THE_WAY",
+      "createdAt": 1783780843546,
+      "deliveryPreference": "AS_READY",
+      "items": "[{\"id\":1,\"name\":\"Truffle Mushroom Risotto\",\"qty\":1,\"price\":450,\"status\":\"PENDING\"}]",
+      "note": "",
+      "subtotal": 450,
+      "total": 517.5
+    },
+    {
+      "id": 1783750696882,
+      "token": "#56",
+      "room": "101",
+      "status": "DELIVERED",
+      "createdAt": 1783750696737,
+      "deliveryPreference": "AS_READY",
+      "items": "[{\"id\":1783750696737.0874,\"name\":\"Eggs Benedict\",\"qty\":1,\"price\":320,\"status\":\"DISPATCHED\"}]",
+      "note": "",
+      "subtotal": 320,
+      "total": 368
+    },
     {
       "id": 1783711538987,
       "token": "#80",

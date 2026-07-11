@@ -3,13 +3,15 @@ import {
   LayoutDashboard, UtensilsCrossed, Printer, X, Plus, ClipboardList, 
   TrendingUp, Package, Star, Clock, Trash2, CheckCircle2, ChevronRight, 
   AlertCircle, DollarSign, Edit3, BarChart2, Coffee, ShieldCheck, ArrowRight,
-  User, Check, ShieldAlert, Award, Search
+  User, Check, ShieldAlert, Award, Search, Wrench
 } from 'lucide-react';
 import { C } from '../../constants/theme';
 import { Card } from '../../components/ui/Card';
 import { VegDot } from '../../components/ui/VegDot';
 import { PinGate } from '../../components/auth/PinGate';
 import { CONFIG } from '../../config';
+
+const ACCENT_BLUE = '#2563EB';
 
 // Unsplash presets for beautiful food pictures
 const IMAGE_PRESETS = [
@@ -35,6 +37,7 @@ export const AdminApp = ({ config = CONFIG }) => {
   const logout = useStore(state => state.logout);
   const configObj = useStore(state => state.config);
   const setConfig = useStore(state => state.setConfig);
+  const feedback = useStore(state => state.feedback) || [];
 
   const [activeSection, setActiveSection] = useState('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
@@ -85,15 +88,23 @@ export const AdminApp = ({ config = CONFIG }) => {
   const calculateBillTotals = (bill) => {
     if (!bill) return { roomTotal: 0, serviceTotal: 0, roomTax: 0, serviceTax: 0, grandTotal: 0 };
     const roomTotal = bill.roomCharge || 0;
-    const serviceTotal = bill.roomServiceCharges ? bill.roomServiceCharges.reduce((sum, c) => sum + c.amount, 0) : 0;
     const roomTax = roomTotal * 0.12;
-    const serviceTax = serviceTotal * 0.15;
+    
+    const cgst = configObj?.cgst || 2.5;
+    const sgst = configObj?.sgst || 2.5;
+    const sc = configObj?.serviceCharge || 10;
+    const totalTaxAndServiceRate = (cgst + sgst + sc) / 100;
+    
+    const serviceTotalInclusive = bill.roomServiceCharges ? bill.roomServiceCharges.reduce((sum, c) => sum + c.amount, 0) : 0;
+    const serviceTotalBase = serviceTotalInclusive / (1 + totalTaxAndServiceRate);
+    const serviceTax = serviceTotalInclusive - serviceTotalBase;
+    
     return {
       roomTotal,
-      serviceTotal,
+      serviceTotal: serviceTotalBase,
       roomTax,
       serviceTax,
-      grandTotal: roomTotal + serviceTotal + roomTax + serviceTax
+      grandTotal: roomTotal + roomTax + serviceTotalInclusive
     };
   };
 
@@ -268,7 +279,8 @@ export const AdminApp = ({ config = CONFIG }) => {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'billing', label: 'Billing & POS', icon: ClipboardList },
-    { id: 'orders', label: 'Live Orders', icon: Package, badge: orders.filter(o => o.status === 'NEW' || o.status === 'PREPARING').length },
+    { id: 'orders', label: 'Dining Orders', icon: Package, badge: orders.filter(o => o.type === 'FOOD' && (o.status === 'NEW' || o.status === 'PREPARING')).length },
+    { id: 'services', label: 'Hospitality Requests', icon: Wrench, badge: orders.filter(o => o.type === 'SERVICE' && (o.status === 'NEW' || o.status === 'PREPARING')).length },
     { id: 'menu', label: 'Menu Editor', icon: UtensilsCrossed },
     { id: 'reports', label: 'Reports', icon: TrendingUp },
     { id: 'settings', label: 'Settings', icon: Edit3 },
@@ -824,7 +836,7 @@ export const AdminApp = ({ config = CONFIG }) => {
                 { title: 'On the Way', status: 'ON_THE_WAY', color: '#8B5CF6', badgeColor: '#F5F3FF' },
                 { title: 'Delivered', status: 'DELIVERED', color: C.emerald, badgeColor: `${C.emerald}12` }
               ].map(column => {
-                const columnOrders = orders.filter(o => o.status === column.status);
+                const columnOrders = orders.filter(o => o.status === column.status && o.type === 'FOOD');
                 return (
                   <div key={column.status} style={{ background: 'rgba(255,255,255,0.4)', borderRadius: 24, padding: 18, border: `1.5px solid ${C.border}`, display: 'flex', flexDirection: 'column', minHeight: '65vh' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -903,6 +915,104 @@ export const AdminApp = ({ config = CONFIG }) => {
                                     style={{ background: C.emerald, border: 'none', color: C.white, fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 8, cursor: 'pointer' }}
                                   >
                                     Deliver
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* HOSPITALITY REQUESTS PIPELINE BOARD */}
+        {activeSection === 'services' && (
+          <div className="animate-fade-up">
+            <div style={{ marginBottom: 28 }}>
+              <h2 className="serif" style={{ fontSize: 32, fontWeight: 800, color: C.text, margin: 0 }}>Hospitality Service Board</h2>
+              <p style={{ color: C.textSub, fontSize: 14, marginTop: 6 }}>Process and dispatch non-food housekeeping, cleanings, and room utilities requests.</p>
+            </div>
+
+            {/* COLUMNS GRID */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
+              {[
+                { title: 'New Requests', status: 'NEW', color: C.warning, badgeColor: C.warningLight },
+                { title: 'In Progress', status: 'PREPARING', color: C.info, badgeColor: C.infoLight },
+                { title: 'Completed', status: 'DELIVERED', color: C.emerald, badgeColor: `${C.emerald}12` }
+              ].map(column => {
+                const columnOrders = orders.filter(o => o.status === column.status && o.type === 'SERVICE');
+                return (
+                  <div key={column.status} style={{ background: 'rgba(255,255,255,0.4)', borderRadius: 24, padding: 18, border: `1.5px solid ${C.border}`, display: 'flex', flexDirection: 'column', minHeight: '65vh' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                      <h4 style={{ fontWeight: 800, fontSize: 14, color: C.text, margin: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>{column.title}</h4>
+                      <span style={{ background: column.badgeColor, color: column.color, fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 8 }}>{columnOrders.length}</span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', flex: 1 }}>
+                      {columnOrders.length === 0 ? (
+                        <div style={{ border: `1px dashed ${C.border}`, borderRadius: 16, height: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted, fontSize: 12, fontWeight: 500 }}>
+                          No Requests
+                        </div>
+                      ) : (
+                        columnOrders.map(order => (
+                          <div 
+                            key={order.id}
+                            style={{
+                              background: C.white,
+                              border: `1px solid ${C.border}`,
+                              borderRadius: 18,
+                              padding: 16,
+                              boxShadow: '0 4px 12px rgba(7,20,40,0.02)'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                              <span style={{ fontWeight: 850, fontSize: 14, color: ACCENT_BLUE }}>Room {order.room}</span>
+                              <span style={{ fontSize: 11, color: C.textSub }}>{order.minutesAgo || 0}m ago</span>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderBottom: `1px solid ${C.borderLight}`, paddingBottom: 10, marginBottom: 12 }}>
+                              {order.items.map((item, idx) => (
+                                <div key={idx} style={{ fontWeight: 700, fontSize: 13, color: C.text }}>
+                                  🛠️ {item.name}
+                                </div>
+                              ))}
+                              {order.note && (
+                                <div style={{ fontSize: 11.5, color: '#92400E', background: '#FEF3C7', padding: '6px 10px', borderRadius: 8, marginTop: 4 }}>
+                                  💬 {order.note}
+                                </div>
+                              )}
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 700 }}>Service Req</span>
+                              
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button 
+                                  onClick={() => cancelOrder(order.id)}
+                                  title="Cancel Request"
+                                  style={{ background: C.dangerLight, border: 'none', color: C.danger, padding: 8, borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                                {order.status === 'NEW' && (
+                                  <button 
+                                    onClick={() => updateOrderStatus(order.id, 'PREPARING')}
+                                    style={{ background: C.emerald, border: 'none', color: C.white, fontSize: 11, fontWeight: 750, padding: '6px 12px', borderRadius: 8, cursor: 'pointer' }}
+                                  >
+                                    Accept
+                                  </button>
+                                )}
+                                {order.status === 'PREPARING' && (
+                                  <button 
+                                    onClick={() => updateOrderStatus(order.id, 'DELIVERED')}
+                                    style={{ background: C.emerald, border: 'none', color: C.white, fontSize: 11, fontWeight: 750, padding: '6px 12px', borderRadius: 8, cursor: 'pointer' }}
+                                  >
+                                    Complete
                                   </button>
                                 )}
                               </div>
@@ -1220,7 +1330,7 @@ export const AdminApp = ({ config = CONFIG }) => {
             </div>
 
             {/* PERFORMANCE METRICS */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24, marginBottom: 32 }}>
               <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none', display: 'flex', alignItems: 'center', gap: 16 }}>
                 <div style={{ background: '#FFFbeb', padding: 14, borderRadius: '50%' }}>
                   <Award size={24} color="#D97706" />
@@ -1238,31 +1348,95 @@ export const AdminApp = ({ config = CONFIG }) => {
 
               <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none', display: 'flex', alignItems: 'center', gap: 16 }}>
                 <div style={{ background: '#ecfdf5', padding: 14, borderRadius: '50%' }}>
-                  <Coffee size={24} color="#059669" />
+                  <Star size={24} color="#10B981" />
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase' }}>Avg Kitchen Dispatch</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase' }}>Avg Food Rating</div>
                   <div style={{ fontSize: 18, fontWeight: 800, color: C.text, marginTop: 4 }}>
-                    12.8 minutes
+                    {feedback.length > 0 ? (feedback.reduce((sum, f) => sum + f.food_rating, 0) / feedback.length).toFixed(1) : 'N/A'} / 5.0
                   </div>
                   <div style={{ fontSize: 11, color: C.textSub, marginTop: 4 }}>
-                    From prep trigger to deliver
+                    From {feedback.length} guest submissions
                   </div>
                 </div>
               </Card>
 
               <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none', display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div style={{ background: '#fdf2f8', padding: 14, borderRadius: '50%' }}>
-                  <User size={24} color="#DB2777" />
+                <div style={{ background: '#EFF6FF', padding: 14, borderRadius: '50%' }}>
+                  <Clock size={24} color={ACCENT_BLUE} />
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase' }}>F&B Conversion</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase' }}>Avg Service Rating</div>
                   <div style={{ fontSize: 18, fontWeight: 800, color: C.text, marginTop: 4 }}>
-                    84.2 %
+                    {feedback.length > 0 ? (feedback.reduce((sum, f) => sum + f.service_rating, 0) / feedback.length).toFixed(1) : 'N/A'} / 5.0
                   </div>
                   <div style={{ fontSize: 11, color: C.textSub, marginTop: 4 }}>
-                    Active check-in F&B rate
+                    Evaluates service delivery speed
                   </div>
+                </div>
+              </Card>
+            </div>
+
+            {/* FEEDBACK & FUTURE DISH SUGGESTIONS LIST */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, marginBottom: 32 }}>
+              <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none' }}>
+                <h3 className="serif" style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: '0 0 10px 0' }}>Future Dish Suggestions</h3>
+                <p style={{ color: C.textSub, fontSize: 13, margin: '0 0 20px 0' }}>Dishes and menu items requested by guests in checkout feedback.</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 300, overflowY: 'auto' }}>
+                  {feedback.filter(f => f.suggestion && f.suggestion.trim() !== '').length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: 32, color: C.textMuted, fontSize: 13 }}>
+                      No dish suggestions logged yet.
+                    </div>
+                  ) : (
+                    feedback.filter(f => f.suggestion && f.suggestion.trim() !== '').map((f, idx) => (
+                      <div key={idx} style={{ padding: 14, background: C.sand, borderRadius: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 12, fontWeight: 800 }}>Room {f.room}</span>
+                          <span style={{ fontSize: 11, color: C.textMuted }}>{new Date(f.createdAt).toLocaleDateString()}</span>
+                        </div>
+                        <div style={{ fontSize: 13, color: C.text, fontStyle: 'italic' }}>
+                          "{f.suggestion}"
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
+
+              {/* SYSCON INTEGRATION POSTING LOGS */}
+              <Card style={{ border: `1px solid ${C.border}`, boxShadow: 'none' }}>
+                <h3 className="serif" style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: '0 0 10px 0' }}>Syscon Folio Post Audit</h3>
+                <p style={{ color: C.textSub, fontSize: 13, margin: '0 0 20px 0' }}>Live charge postings to Syscon HMS folios upon order deliveries.</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 300, overflowY: 'auto' }}>
+                  {orders.filter(o => o.status === 'DELIVERED').length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: 32, color: C.textMuted, fontSize: 13 }}>
+                      No delivered orders to post yet.
+                    </div>
+                  ) : (
+                    orders.filter(o => o.status === 'DELIVERED').map((order, idx) => (
+                      <div key={idx} style={{ padding: 14, background: C.sand, borderRadius: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 800 }}>Order {order.token} (Room {order.room})</div>
+                          <div style={{ fontSize: 11, color: C.textSub, marginTop: 4 }}>Total: ₹{order.total}</div>
+                        </div>
+                        <div>
+                          {order.syscon_posted === 1 ? (
+                            <span style={{ fontSize: 11, background: '#D1FAE5', color: '#059669', padding: '4px 10px', borderRadius: 8, fontWeight: 750 }}>
+                              SUCCESS POSTED
+                            </span>
+                          ) : order.syscon_posted === -1 ? (
+                            <span style={{ fontSize: 11, background: '#FEE2E2', color: '#EF4444', padding: '4px 10px', borderRadius: 8, fontWeight: 750 }}>
+                              SYNC TIMEOUT
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 11, background: '#FEF3C7', color: '#D97706', padding: '4px 10px', borderRadius: 8, fontWeight: 750 }}>
+                              PENDING SYNC
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </Card>
             </div>
@@ -1306,25 +1480,37 @@ export const AdminApp = ({ config = CONFIG }) => {
                 <h3 className="serif" style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: '0 0 20px 0' }}>Tax & Service Configuration</h3>
                 
                 <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Room Accommodation Tax (%)</label>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>F&B Service Charge (%)</label>
                   <input 
                     type="number" 
-                    step="0.1"
-                    value={configObj?.taxRates?.roomTax || 12}
-                    onChange={e => setConfig({ taxRates: { ...configObj.taxRates, roomTax: parseFloat(e.target.value) } })}
+                    step="0.5"
+                    value={configObj?.serviceCharge || 10}
+                    onChange={e => setConfig({ serviceCharge: parseFloat(e.target.value) || 0 })}
                     style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14 }}
                   />
                 </div>
                 
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>F&B Service Tax (SGST+CGST) (%)</label>
-                  <input 
-                    type="number" 
-                    step="0.1"
-                    value={configObj?.taxRates?.serviceTax || 15}
-                    onChange={e => setConfig({ taxRates: { ...configObj.taxRates, serviceTax: parseFloat(e.target.value) } })}
-                    style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14 }}
-                  />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>CGST (%)</label>
+                    <input 
+                      type="number" 
+                      step="0.1"
+                      value={configObj?.cgst || 2.5}
+                      onChange={e => setConfig({ cgst: parseFloat(e.target.value) || 0 })}
+                      style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14 }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>SGST (%)</label>
+                    <input 
+                      type="number" 
+                      step="0.1"
+                      value={configObj?.sgst || 2.5}
+                      onChange={e => setConfig({ sgst: parseFloat(e.target.value) || 0 })}
+                      style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14 }}
+                    />
+                  </div>
                 </div>
               </Card>
             </div>
@@ -1401,12 +1587,16 @@ export const AdminApp = ({ config = CONFIG }) => {
                      <td style={{ padding: '14px 0', textAlign: 'right', fontWeight: 800 }}>{activeTotals.roomTotal.toFixed(2)}</td>
                    </tr>
                  )}
-                 {activeBill.roomServiceCharges && activeBill.roomServiceCharges.map((c, i) => (
-                    <tr key={i} style={{ borderBottom: `1px dashed ${C.border}` }}>
-                      <td style={{ padding: '14px 0', color: C.textSub }}>Room dining charge (Order #{c.orderId})</td>
-                      <td style={{ padding: '14px 0', textAlign: 'right', fontWeight: 600 }}>{c.amount.toFixed(2)}</td>
-                    </tr>
-                 ))}
+                 {activeBill.roomServiceCharges && activeBill.roomServiceCharges.map((c, i) => {
+                     const totalTaxAndServiceRate = ((configObj?.cgst || 2.5) + (configObj?.sgst || 2.5) + (configObj?.serviceCharge || 10)) / 100;
+                     const baseAmount = c.amount / (1 + totalTaxAndServiceRate);
+                     return (
+                       <tr key={i} style={{ borderBottom: `1px dashed ${C.border}` }}>
+                         <td style={{ padding: '14px 0', color: C.textSub }}>Room dining charge (Order #{c.orderId})</td>
+                         <td style={{ padding: '14px 0', textAlign: 'right', fontWeight: 600 }}>{baseAmount.toFixed(2)}</td>
+                       </tr>
+                     );
+                  })}
                  
                  {isHotel && (
                    <tr>

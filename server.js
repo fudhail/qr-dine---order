@@ -7,6 +7,7 @@ import multer from 'multer';
 import path from 'path';
 import { rateLimit } from 'express-rate-limit';
 import { initDB, getFullState } from './db.js';
+import { sysconAPI } from './lib/syscon.js';
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
@@ -36,7 +37,7 @@ const activeSessions = new Map();
 
 const loginLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 15, // limit each IP to 15 login requests per windowMs
+  max: 15,
   message: { error: 'Too many login attempts, please try again later' }
 });
 
@@ -53,7 +54,7 @@ let db;
 
 const getSanitizedState = (state) => ({
   menuItems: state.menuItems,
-  orders: state.orders, // Kept to allow live order tracking
+  orders: state.orders,
   config: { 
     cgst: state.config.cgst, 
     sgst: state.config.sgst, 
@@ -61,25 +62,76 @@ const getSanitizedState = (state) => ({
   }
 });
 
-// ─── Socket.io Events ─────────────────────────────────────────────────────────
+// Broadcast updated state to clients
+const sendGuestState = async (target, room) => {
+  const state = await getFullState(db);
+  state.orders = injectMinutesAgo(state.orders);
+  
+  // Filter orders to only include this guest room's orders
+  const filteredOrders = state.orders.filter(o => String(o.room) === String(room));
+  
+  const guestState = {
+    menuItems: state.menuItems,
+    orders: filteredOrders,
+    config: { 
+      cgst: state.config.cgst, 
+      sgst: state.config.sgst, 
+      serviceCharge: state.config.serviceCharge 
+    }
+  };
+  
+  if (typeof target.emit === 'function') {
+    target.emit('guest_state_update', guestState);
+  } else {
+    io.to(target).emit('guest_state_update', guestState);
+  }
+};
 
+// Broadcast updated state to clients
 const broadcastState = async () => {
   if (!db) return;
   const state = await getFullState(db);
   state.orders = injectMinutesAgo(state.orders);
   
-  io.emit('guest_state_update', getSanitizedState(state));
   io.to('admin_room').emit('admin_state_update', state);
+
+  // Scoped broadcasts to active rooms
+  const activeRooms = new Set();
+  activeSessions.forEach(session => {
+    activeRooms.add(session.room);
+  });
+  for (const room of activeRooms) {
+    await sendGuestState(`room_${room}`, room);
+  }
 };
+
+// ─── Socket.io Events ─────────────────────────────────────────────────────────
 
 io.on('connection', async (socket) => {
   console.log(`Client connected: ${socket.id}`);
 
   if (db) {
     const state = await getFullState(db);
-    state.orders = injectMinutesAgo(state.orders);
-    socket.emit('guest_state_update', getSanitizedState(state));
+    // Send menu items and config on connection
+    socket.emit('guest_state_update', {
+      menuItems: state.menuItems,
+      orders: [],
+      config: { 
+        cgst: state.config.cgst, 
+        sgst: state.config.sgst, 
+        serviceCharge: state.config.serviceCharge 
+      }
+    });
   }
+
+  socket.on('register_guest', async ({ sessionId }) => {
+    const session = activeSessions.get(sessionId);
+    if (session) {
+      socket.join(`room_${session.room}`);
+      console.log(`Socket ${socket.id} joined room_${session.room}`);
+      await sendGuestState(socket, session.room);
+    }
+  });
 
   socket.on('join_admin', async ({ token }) => {
     const adminSig = crypto.createHmac('sha256', QR_SECRET).update('admin').digest('hex');
@@ -92,7 +144,7 @@ io.on('connection', async (socket) => {
     }
   });
 
-  // Authenticated guest order placement
+  // Authenticated order placement
   socket.on('place_order', async ({ order, sessionId }) => {
     const session = activeSessions.get(sessionId);
     if (!session) {
@@ -109,7 +161,7 @@ io.on('connection', async (socket) => {
       socket.emit('order_rejected', { reason: 'Room service is not active for this room right now.' });
       return;
     }
-    if (roomBill.billId !== session.billId) {
+    if (roomBill.billId && session.billId && String(roomBill.billId) !== String(session.billId)) {
       socket.emit('order_rejected', { reason: 'Your stay has concluded. Room service is no longer available.' });
       activeSessions.delete(sessionId);
       return;
@@ -118,16 +170,130 @@ io.on('connection', async (socket) => {
     session.lastActivity = Date.now();
     
     const createdAt = Date.now();
-    const token = `#${Math.floor(Math.random() * 90) + 10}`; // simple token gen
-    
+    const token = `#${Math.floor(Math.random() * 90) + 10}`;
+    const orderId = Date.now() + Math.floor(Math.random() * 1000);
+
+    let subtotal = 0;
+    let validatedItems = [];
+
+    const sysConfig = await db.get('SELECT * FROM config WHERE id = 1') || { cgst: 2.5, sgst: 2.5, serviceCharge: 10 };
+    const cgstRate = sysConfig.cgst;
+    const sgstRate = sysConfig.sgst;
+    const scRate = sysConfig.serviceCharge;
+
+    if ((order.type || 'FOOD') === 'FOOD') {
+      const dbMenuItems = await db.all('SELECT * FROM menu_items');
+      const menuItemMap = {};
+      dbMenuItems.forEach(i => { menuItemMap[i.id] = i; });
+
+      for (const item of (order.items || [])) {
+        const menuItemId = Number(item.id);
+        if (Number.isInteger(menuItemId)) {
+          const dbItem = menuItemMap[menuItemId];
+          if (!dbItem) {
+            socket.emit('order_rejected', { reason: `Item "${item.name}" is no longer on the menu.` });
+            return;
+          }
+          if (dbItem.available === 0) {
+            socket.emit('order_rejected', { 
+              reason: `Item "${item.name}" is out of stock. Please swap it or try something else.`,
+              item_out_of_stock_alert: true,
+              itemId: item.id
+            });
+            return;
+          }
+          const qty = parseInt(item.qty) || 1;
+          validatedItems.push({
+            id: dbItem.id,
+            name: dbItem.name,
+            price: dbItem.price,
+            qty,
+            isVeg: dbItem.isVeg,
+            category: dbItem.category,
+            status: 'PENDING'
+          });
+          subtotal += dbItem.price * qty;
+        } else {
+          // Custom requests have ₹0 price initially
+          const qty = parseInt(item.qty) || 1;
+          const customName = item.desc ? `${item.name} (${item.desc})` : item.name;
+          validatedItems.push({
+            name: customName,
+            price: 0,
+            qty,
+            category: 'Custom',
+            status: 'PENDING'
+          });
+        }
+      }
+    } else {
+      validatedItems = (order.items || []).map(i => ({
+        name: i.name,
+        price: 0,
+        qty: 1,
+        status: 'PENDING'
+      }));
+    }
+
+    const serviceCharge = parseFloat((subtotal * (scRate / 100)).toFixed(2));
+    const cgst = parseFloat(((subtotal + serviceCharge) * (cgstRate / 100)).toFixed(2));
+    const sgst = parseFloat(((subtotal + serviceCharge) * (sgstRate / 100)).toFixed(2));
+    const total = parseFloat((subtotal + serviceCharge + cgst + sgst).toFixed(2));
+
+    // Save master order
     await db.run(
-      `INSERT INTO orders (token, room, status, createdAt, deliveryPreference, items, note, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [token, order.room, 'NEW', createdAt, order.deliveryPreference, JSON.stringify(order.items), order.note, order.subtotal, order.total]
+      `INSERT INTO orders (id, token, room, status, type, createdAt, deliveryPreference, note, items, subtotal, total, syscon_posted) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        orderId, 
+        token, 
+        session.room, 
+        'NEW', 
+        order.type || 'FOOD', 
+        createdAt, 
+        order.deliveryPreference || 'AS_READY', 
+        order.note || '', 
+        JSON.stringify(validatedItems), 
+        subtotal, 
+        total, 
+        0
+      ]
     );
 
+    // Dynamic KOT splitting
+    if (order.type === 'FOOD') {
+      // Group items by station_id
+      const dbItems = await db.all('SELECT id, station_id FROM menu_items');
+      const itemStationMap = {};
+      dbItems.forEach(i => { itemStationMap[i.id] = i.station_id; });
+
+      const stationGroups = {};
+      for (const item of validatedItems) {
+        // If it's a custom/open item, it won't have an ID, so route it to 'indian' by default
+        const stationId = item.id ? (itemStationMap[item.id] || 'indian') : 'indian';
+        if (!stationGroups[stationId]) {
+          stationGroups[stationId] = [];
+        }
+        stationGroups[stationId].push(item);
+      }
+
+      // Create KOT for each station group
+      for (const [stationId, items] of Object.entries(stationGroups)) {
+        const suffix = stationId.substring(0, 3).toUpperCase();
+        const kotNumber = `KOT-${orderId}-${suffix}`;
+        await db.run(
+          `INSERT INTO kots (order_id, station_id, kot_number, items, status) VALUES (?, ?, ?, ?, ?)`,
+          [orderId, stationId, kotNumber, JSON.stringify(items), 'PENDING']
+        );
+      }
+    }
+
     await broadcastState();
-    // Assuming the frontend wants to know it succeeded, though in GuestApp I'll handle tracking via broadcast
-    socket.emit('order_accepted', { orderId: order.id });
+    if (order.type === 'EMERGENCY') {
+      socket.emit('sos_accepted', { orderId });
+    } else {
+      socket.emit('order_accepted', { orderId });
+    }
   });
 
   socket.on('disconnect', () => {
@@ -175,6 +341,7 @@ const authenticateStaff = (req, res, next) => {
   next();
 };
 
+// Validate token & sync with Syscon HMS
 app.post('/api/validate-token', async (req, res) => {
   const { token } = req.body;
   if (!token) return res.status(400).json({ error: 'Token required' });
@@ -184,25 +351,40 @@ app.post('/api/validate-token', async (req, res) => {
     return res.status(401).json({ error: 'Invalid QR code. Please scan the QR code placed in your room.' });
   }
 
-  const roomBill = await db.get('SELECT * FROM room_bills WHERE room = ?', [result.room]);
-  if (!roomBill || roomBill.status !== 'OPEN') {
-    return res.status(403).json({ error: 'Room service is not active for this room. Please contact reception.' });
+  // Validate room folio directly with Syscon HMS
+  const sysconResult = await sysconAPI.validateGuestRoom(result.room);
+  if (!sysconResult.success) {
+    return res.status(403).json({ error: sysconResult.error });
   }
+
+  // Upsert the room bill locally with validated Syscon info
+  await db.run(
+    `INSERT INTO room_bills (room, billId, guestName, checkIn, checkOut, roomCharge, status, syscon_guest_id) 
+     VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?)
+     ON CONFLICT(room) DO UPDATE SET 
+       billId = excluded.billId,
+       guestName = excluded.guestName,
+       checkIn = excluded.checkIn,
+       checkOut = excluded.checkOut,
+       status = 'OPEN',
+       syscon_guest_id = excluded.syscon_guest_id`,
+    [result.room, sysconResult.billId, sysconResult.guestName, sysconResult.checkIn, sysconResult.checkOut, 0, sysconResult.sysconGuestId]
+  );
   
   const sessionId = crypto.randomBytes(32).toString('hex');
   activeSessions.set(sessionId, { 
     room: String(result.room), 
-    billId: roomBill.billId,
+    billId: sysconResult.billId,
     lastActivity: Date.now() 
   });
 
-  console.log(`QR validated for Room ${result.room} [Bill: ${roomBill.billId}] | Session: ${sessionId.slice(0, 8)}...`);
+  console.log(`QR validated via Syscon for Room ${result.room} [Session: ${sessionId.slice(0, 8)}...]`);
   res.json({ sessionId, room: result.room });
 });
 
 app.post('/api/login', loginLimiter, async (req, res) => {
   const { role, pin } = req.body;
-  const config = (await db.all('SELECT * FROM config'))[0];
+  const config = await db.get('SELECT * FROM config WHERE id = 1');
   
   if (role === 'admin' && pin === config.adminPin) {
     const adminToken = crypto.createHmac('sha256', QR_SECRET).update('admin').digest('hex');
@@ -257,20 +439,173 @@ app.get('/api/admin/setup-qr', async (req, res) => {
   res.send(html);
 });
 
-// Staff State Mutations
+// Update master orders and push billing to Syscon HMS on DELIVERED
 app.post('/api/admin/orders', authenticateStaff, async (req, res) => {
   const newOrders = req.body;
   if (!Array.isArray(newOrders)) return res.status(400).json({ error: 'Invalid data' });
+  
   for (const o of newOrders) {
     await db.run('UPDATE orders SET status = ?, items = ? WHERE id = ?', [o.status, JSON.stringify(o.items), o.id]);
+    
+    // Auto-post to Syscon HMS when order is delivered
+    if (o.status === 'DELIVERED') {
+      const dbOrder = await db.get('SELECT * FROM orders WHERE id = ?', [o.id]);
+      if (dbOrder && dbOrder.syscon_posted !== 1) {
+        const postRes = await sysconAPI.postFolioCharge(dbOrder);
+        if (postRes.success) {
+          await db.run('UPDATE orders SET syscon_posted = 1 WHERE id = ?', [o.id]);
+        } else {
+          await db.run('UPDATE orders SET syscon_posted = -1 WHERE id = ?', [o.id]);
+        }
+      }
+    }
   }
   await broadcastState();
+  res.json({ success: true });
+});
+
+// Partial dispatch of order items from pantry
+app.post('/api/admin/orders/:id/partial-dispatch', authenticateStaff, async (req, res) => {
+  const orderId = req.params.id;
+  const { items } = req.body;
+  
+  if (!items) return res.status(400).json({ error: 'Items required' });
+
+  // Update order items array (marks individual items as DISPATCHED / DELIVERED)
+  await db.run('UPDATE orders SET items = ? WHERE id = ?', [JSON.stringify(items), orderId]);
+  
+  // Broadcast the state update to guests immediately
+  await broadcastState();
+  res.json({ success: true });
+});
+
+// Update specific KOT status (printed/ready)
+app.post('/api/admin/kots/:id/status', authenticateStaff, async (req, res) => {
+  const kotId = req.params.id;
+  const { status } = req.body;
+  
+  await db.run('UPDATE kots SET status = ? WHERE id = ?', [status, kotId]);
+  
+  // If all KOTs for a specific order are READY, auto-transition the master order status to PREPARING/ON_THE_WAY
+  const kot = await db.get('SELECT order_id FROM kots WHERE id = ?', [kotId]);
+  if (kot) {
+    const orderKots = await db.all('SELECT status FROM kots WHERE order_id = ?', [kot.order_id]);
+    const allReady = orderKots.every(k => k.status === 'READY');
+    if (allReady) {
+      await db.run("UPDATE orders SET status = 'PREPARING' WHERE id = ? AND status = 'NEW'", [kot.order_id]);
+    }
+  }
+  
+  await broadcastState();
+  res.json({ success: true });
+});
+
+// Cancel active order if status is NEW (Admin/Staff only)
+app.post('/api/admin/orders/:id/cancel', authenticateStaff, async (req, res) => {
+  const orderId = req.params.id;
+  const order = await db.get('SELECT status FROM orders WHERE id = ?', [orderId]);
+  
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+  if (order.status !== 'NEW') {
+    return res.status(400).json({ error: 'Order is already being prepared and cannot be cancelled' });
+  }
+
+  await db.run("UPDATE orders SET status = 'CANCELLED' WHERE id = ?", [orderId]);
+  await db.run("DELETE FROM kots WHERE order_id = ?", [orderId]);
+  
+  await broadcastState();
+  res.json({ success: true });
+});
+
+// Guest cancellation with session validation
+app.post('/api/guest/orders/:id/cancel', async (req, res) => {
+  const { sessionId } = req.body;
+  if (!sessionId) return res.status(401).json({ error: 'Session ID required' });
+  
+  const session = activeSessions.get(sessionId);
+  if (!session) return res.status(401).json({ error: 'Invalid or expired session' });
+
+  const orderId = req.params.id;
+  const order = await db.get('SELECT room, status FROM orders WHERE id = ?', [orderId]);
+  
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+  if (String(order.room) !== String(session.room)) {
+    return res.status(403).json({ error: 'Unauthorized to cancel this order' });
+  }
+  if (order.status !== 'NEW') {
+    return res.status(400).json({ error: 'Order is already being prepared and cannot be cancelled' });
+  }
+
+  await db.run("UPDATE orders SET status = 'CANCELLED' WHERE id = ?", [orderId]);
+  await db.run("DELETE FROM kots WHERE order_id = ?", [orderId]);
+  
+  await broadcastState();
+  res.json({ success: true });
+});
+
+// Out-of-Stock notifier toggle
+app.post('/api/admin/menu_items/out-of-stock', authenticateStaff, async (req, res) => {
+  const { itemId, available } = req.body;
+  
+  await db.run('UPDATE menu_items SET available = ? WHERE id = ?', [available ? 1 : 0, itemId]);
+  
+  if (!available) {
+    const item = await db.get('SELECT name FROM menu_items WHERE id = ?', [itemId]);
+    // Notify all guests via WebSocket that this item has gone out of stock
+    io.emit('item_out_of_stock_alert', { itemId, name: item?.name });
+  }
+  
+  await broadcastState();
+  res.json({ success: true });
+});
+
+// Submit guest feedback
+app.post('/api/guest/feedback', async (req, res) => {
+  const { sessionId, orderId, serviceRating, foodRating, suggestion } = req.body;
+  if (!sessionId || serviceRating === undefined || foodRating === undefined) {
+    return res.status(400).json({ error: 'Missing required feedback fields' });
+  }
+
+  const session = activeSessions.get(sessionId);
+  if (!session) return res.status(401).json({ error: 'Invalid or expired session' });
+
+  const sRating = parseInt(serviceRating);
+  const fRating = parseInt(foodRating);
+  if (isNaN(sRating) || sRating < 1 || sRating > 5 || isNaN(fRating) || fRating < 1 || fRating > 5) {
+    return res.status(400).json({ error: 'Ratings must be integers between 1 and 5' });
+  }
+
+  if (orderId) {
+    const order = await db.get('SELECT room, status FROM orders WHERE id = ?', [orderId]);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (String(order.room) !== String(session.room)) {
+      return res.status(403).json({ error: 'Unauthorized feedback submission' });
+    }
+    if (order.status !== 'DELIVERED') {
+      return res.status(400).json({ error: 'Feedback can only be submitted after delivery' });
+    }
+
+    // Prevent duplicates
+    const existing = await db.get('SELECT id FROM guest_feedback WHERE order_id = ?', [orderId]);
+    if (existing) {
+      return res.json({ success: true, message: 'Feedback already submitted for this order' });
+    }
+  }
+
+  await db.run(
+    `INSERT INTO guest_feedback (order_id, room, service_rating, food_rating, suggestion, createdAt) 
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [orderId || null, session.room, sRating, fRating, suggestion || '', Date.now()]
+  );
+
+  await broadcastState(); // Broadcast updated feedback lists
   res.json({ success: true });
 });
 
 app.post('/api/admin/menu_items', authenticateAdmin, async (req, res) => {
   const newMenuItems = req.body;
   if (!Array.isArray(newMenuItems)) return res.status(400).json({ error: 'Invalid data' });
+  
   const existingMenuItems = await db.all('SELECT * FROM menu_items');
   const incomingIds = new Set(newMenuItems.map(item => String(item.id)));
 
@@ -282,8 +617,18 @@ app.post('/api/admin/menu_items', authenticateAdmin, async (req, res) => {
 
   for (const item of newMenuItems) {
     await db.run(
-      'UPDATE menu_items SET name = ?, desc = ?, price = ?, category = ?, isVeg = ?, available = ?, image = ? WHERE id = ?',
-      [item.name, item.desc, item.price, item.category, item.isVeg ? 1 : 0, item.available ? 1 : 0, item.image, item.id]
+      `INSERT INTO menu_items (id, name, desc, price, category, station_id, isVeg, available, image) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET 
+         name = excluded.name,
+         desc = excluded.desc,
+         price = excluded.price,
+         category = excluded.category,
+         station_id = excluded.station_id,
+         isVeg = excluded.isVeg,
+         available = excluded.available,
+         image = excluded.image`,
+      [item.id, item.name, item.desc, item.price, item.category, item.station_id || 'indian', item.isVeg ? 1 : 0, item.available ? 1 : 0, item.image]
     );
   }
   await broadcastState();
@@ -293,6 +638,7 @@ app.post('/api/admin/menu_items', authenticateAdmin, async (req, res) => {
 app.post('/api/admin/room_bills', authenticateAdmin, async (req, res) => {
   const newRoomBills = req.body;
   if (!Array.isArray(newRoomBills)) return res.status(400).json({ error: 'Invalid data' });
+  
   for (const bill of newRoomBills) {
     const oldBill = await db.get('SELECT status FROM room_bills WHERE room = ?', [bill.room]);
     if (oldBill?.status === 'OPEN' && bill.status === 'CLOSED') {
@@ -301,8 +647,17 @@ app.post('/api/admin/room_bills', authenticateAdmin, async (req, res) => {
       }
     }
     await db.run(
-      'UPDATE room_bills SET billId = ?, guestName = ?, checkIn = ?, checkOut = ?, roomCharge = ?, roomServiceCharges = ?, status = ? WHERE room = ?',
-      [bill.billId, bill.guestName, bill.checkIn, bill.checkOut, bill.roomCharge, JSON.stringify(bill.roomServiceCharges), bill.status, bill.room]
+      `INSERT INTO room_bills (room, billId, guestName, checkIn, checkOut, roomCharge, status, syscon_guest_id) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(room) DO UPDATE SET 
+         billId = excluded.billId,
+         guestName = excluded.guestName,
+         checkIn = excluded.checkIn,
+         checkOut = excluded.checkOut,
+         roomCharge = excluded.roomCharge,
+         status = excluded.status,
+         syscon_guest_id = excluded.syscon_guest_id`,
+      [bill.room, bill.billId, bill.guestName, bill.checkIn, bill.checkOut, bill.roomCharge, bill.status, bill.syscon_guest_id || `GUEST-${bill.room}`]
     );
   }
   await broadcastState();
@@ -313,7 +668,7 @@ app.post('/api/admin/config', authenticateAdmin, async (req, res) => {
   const newConfig = req.body;
   if (!newConfig) return res.status(400).json({ error: 'Invalid data' });
   await db.run(
-    'UPDATE config SET adminPin = ?, kitchenPin = ?, cgst = ?, sgst = ?, serviceCharge = ?',
+    'UPDATE config SET adminPin = ?, kitchenPin = ?, cgst = ?, sgst = ?, serviceCharge = ? WHERE id = 1',
     [newConfig.adminPin, newConfig.kitchenPin, newConfig.cgst, newConfig.sgst, newConfig.serviceCharge]
   );
   await broadcastState();
