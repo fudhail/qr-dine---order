@@ -157,7 +157,10 @@ export const KitchenApp = () => {
   const filteredMenuItems = useMemo(() => {
     return menuItems.filter(item => {
       const query = menuSearch.toLowerCase();
-      const matchesSearch = item.name.toLowerCase().includes(query) || (item.desc && item.desc.toLowerCase().includes(query));
+      const matchesSearch =
+        item.name.toLowerCase().includes(query) ||
+        (item.desc && item.desc.toLowerCase().includes(query)) ||
+        (item.cuisine && item.cuisine.toLowerCase().includes(query));
       const matchesCategory = activeMenuCategory === 'All' || item.category === activeMenuCategory;
       return matchesSearch && matchesCategory;
     });
@@ -168,9 +171,9 @@ export const KitchenApp = () => {
   }
 
   const tabs = [
-    { id: 'ACTIVE', label: 'Now', icon: FileText, count: orders.filter(o => ['NEW', 'PREPARING'].includes(o.status)).length },
-    { id: 'READY', label: 'Done', icon: CheckSquare, count: orders.filter(o => ['ON_THE_WAY', 'DELIVERED'].includes(o.status)).length },
-    { id: 'MENU', label: 'Stock', icon: LayoutDashboard, count: 0 },
+    { id: 'ACTIVE', label: 'Pantry Queue', icon: FileText, count: orders.filter(o => ['NEW', 'PREPARING'].includes(o.status)).length },
+    { id: 'READY', label: 'Completed', icon: CheckSquare, count: orders.filter(o => ['ON_THE_WAY', 'DELIVERED'].includes(o.status)).length },
+    { id: 'MENU', label: 'Stock Control', icon: LayoutDashboard, count: 0 },
   ];
 
   return (
@@ -236,7 +239,7 @@ export const KitchenApp = () => {
             <ChefHat size={24} />
           </div>
           {!isSidebarCollapsed && (
-            <div style={{ fontWeight: 800, fontSize: 20, color: C.text, letterSpacing: '-0.5px', whiteSpace: 'nowrap' }}>KDS</div>
+            <div style={{ fontWeight: 800, fontSize: 20, color: C.text, letterSpacing: '-0.5px', whiteSpace: 'nowrap' }}>Pantry KDS</div>
           )}
         </div>
 
@@ -300,7 +303,7 @@ export const KitchenApp = () => {
               {tabs.find(t => t.id === activeTab)?.label}
             </h1>
             <p style={{ margin: '4px 0 0', color: C.textSub, fontSize: 14 }}>
-              {activeTab === 'MENU' ? `${filteredMenuItems.length} of ${menuItems.length} stock controls` : `${filteredOrders.length + activeServiceRequests.length} requests in this queue`}
+              {activeTab === 'MENU' ? `${filteredMenuItems.length} of ${menuItems.length} pantry stock controls` : `${filteredOrders.length + activeServiceRequests.length} pantry tasks in this queue`}
             </p>
           </div>
           
@@ -396,7 +399,10 @@ export const KitchenApp = () => {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                       <div>
                         <h4 style={{ margin: '0 0 4px', fontWeight: 800, fontSize: 16 }}>{item.name}</h4>
-                        <span style={{ fontSize: 11, background: C.borderLight, padding: '4px 8px', borderRadius: 6, fontWeight: 700, color: C.textSub }}>{item.category}</span>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 11, background: C.borderLight, padding: '4px 8px', borderRadius: 6, fontWeight: 700, color: C.textSub }}>{item.category}</span>
+                          <span style={{ fontSize: 11, background: '#EFF6FF', padding: '4px 8px', borderRadius: 6, fontWeight: 800, color: ACCENT_BLUE }}>{item.cuisine || item.category}</span>
+                        </div>
                       </div>
                       <div 
                         onClick={() => toggleItemAvailability(item.id, item.available)}
@@ -426,7 +432,7 @@ export const KitchenApp = () => {
             
             {/* DINING ORDERS */}
             <div>
-              <h2 style={{ fontSize: 18, fontWeight: 800, color: C.text, marginBottom: 16 }}>Dining Orders Pipeline</h2>
+              <h2 style={{ fontSize: 18, fontWeight: 800, color: C.text, marginBottom: 16 }}>Pantry Order Queue</h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: 24 }}>
                 {orders.length === 0 ? (
                   Array.from({ length: 3 }).map((_, idx) => (
@@ -515,19 +521,22 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
   const splitKOTs = useMemo(() => {
     const groups = {};
     order.items.forEach(item => {
-      const cat = item.category || 'Kitchen';
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(item);
+      const station = item.station_id || item.category || 'Kitchen';
+      const cuisine = item.cuisine || item.category || 'Kitchen';
+      const key = `${station}::${cuisine}`;
+      if (!groups[key]) groups[key] = { station, cuisine, items: [] };
+      groups[key].items.push(item);
     });
     return groups;
   }, [order]);
   const printableKots = (order.kots && order.kots.length > 0)
     ? order.kots
-    : Object.entries(splitKOTs).map(([station, items], index) => ({
-        id: `fallback-${station}-${index}`,
-        station_id: station,
-        kot_number: `${order.token}-${String(station).toUpperCase()}`,
-        items
+    : Object.entries(splitKOTs).map(([key, group], index) => ({
+        id: `fallback-${key}-${index}`,
+        station_id: group.station,
+        cuisine: group.cuisine,
+        kot_number: `${order.token}-${String(group.station).toUpperCase()}-${String(group.cuisine).toUpperCase()}`,
+        items: group.items
       }));
 
   // Determine top bar color based on status (Rapid KDS style)
@@ -578,7 +587,7 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               <div style={{ fontWeight: 800, fontSize: 11, textTransform: 'uppercase', color: topColor, letterSpacing: '0.5px' }}>
-                {order.status}
+                {isNew ? 'PENDING PANTRY' : isPrep ? 'WITH CHEFS' : isReady ? 'DISPATCHED' : 'COMPLETED'}
               </div>
               <div style={{ fontSize: 9, fontWeight: 800, backgroundColor: isAsReady ? '#FEE2E2' : '#EFF6FF', color: isAsReady ? '#EF4444' : ACCENT_BLUE, padding: '2px 5px', borderRadius: 4 }}>
                 {isAsReady ? 'AS READY' : 'ALL AT ONCE'}
@@ -640,9 +649,12 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
                 <div style={{ fontWeight: 650, fontSize: 13.5, color: C.text, textDecoration: isItemDispatched ? 'line-through' : 'none' }}>
                   {item.qty}x {item.name}
                 </div>
+                <div style={{ marginTop: 3, fontSize: 10.5, color: C.textMuted, fontWeight: 700 }}>
+                  {item.cuisine || item.category || 'Kitchen'}
+                </div>
               </div>
               <span style={{ fontSize: 10, fontWeight: 800, color: isItemDispatched ? '#9CA3AF' : isItemDone ? '#10B981' : '#6B7280' }}>
-                {isItemDispatched ? 'Dispatched' : isItemDone ? 'Done' : 'Pending'}
+                {isItemDispatched ? 'Sent' : isItemDone ? 'Chef ready' : 'Waiting'}
               </span>
             </div>
           );
@@ -656,7 +668,7 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
             onClick={() => updateStatus(order.id, 'PREPARING')}
             style={{ width: '100%', padding: 12, borderRadius: 10, border: 'none', backgroundColor: '#3B82F6', color: '#FFF', fontWeight: 800, fontSize: 14, cursor: 'pointer' }}
           >
-            ACCEPT & PREPARE
+            SEND KOT TO CHEFS
           </button>
         )}
         {isPrep && (
@@ -674,7 +686,7 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
                   color: '#FFF', fontWeight: 800, fontSize: 14, cursor: 'pointer' 
                 }}
               >
-                DISPATCH READY ITEMS
+                SEND READY ITEMS
               </button>
             ) : (
               <button 
@@ -719,7 +731,10 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
               {printableKots.map((kot, index) => (
                 <div key={kot.id} style={{ marginBottom: index < printableKots.length - 1 ? 20 : 0, borderBottom: index < printableKots.length - 1 ? '2px dashed #9CA3AF' : 'none', paddingBottom: 12 }}>
                   <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 950, textTransform: 'uppercase', marginBottom: 6 }}>
-                    *** ELITE KOT: {String(kot.station_id).toUpperCase()} ***
+                    *** ELITE KOT: {String((kot.items?.[0]?.cuisine || kot.cuisine || kot.station_id)).toUpperCase()} ***
+                  </div>
+                  <div style={{ textAlign: 'center', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6, color: '#6B7280' }}>
+                    Pantry: {String(kot.station_id || 'kitchen').toUpperCase()}
                   </div>
                   <div style={{ fontSize: 11, marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
                     <span>Order: {order.token}</span>

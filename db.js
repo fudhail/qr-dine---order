@@ -12,21 +12,21 @@ const JSON_DB_FILE = path.join(__dirname, 'database.json');
 // Initial seed data for fallback/new setup
 const initialData = {
   menu_items: [
-    { id: 1, name: 'Truffle Mushroom Risotto', desc: 'Creamy Arborio rice with wild mushrooms and truffle oil', price: 450, category: 'Mains', station_id: 'indian', isVeg: 1, available: 1, image: 'https://images.unsplash.com/photo-1473093295043-cdd812d0e601?w=400&q=80' },
-    { id: 2, name: 'Margherita Pizza', desc: 'Classic San Marzano tomato sauce, fresh mozzarella, and basil', price: 380, category: 'Mains', station_id: 'chinese', isVeg: 1, available: 1, image: 'https://images.unsplash.com/photo-1604068549290-dea0e4a30536?w=400&q=80' },
-    { id: 3, name: 'Eggs Benedict', desc: 'Poached eggs on English muffins with hollandaise', price: 320, category: 'Breakfast', station_id: 'breakfast', isVeg: 0, available: 1, image: 'https://images.unsplash.com/photo-1608039829572-78524f79c4c7?w=400&q=80' },
-    { id: 4, name: 'Avocado Toast', desc: 'Smashed avocado on sourdough with cherry tomatoes', price: 290, category: 'Breakfast', station_id: 'breakfast', isVeg: 1, available: 1, image: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=400&q=80' },
-    { id: 5, name: 'Buffalo Wings', desc: 'Spicy chicken wings with blue cheese dip', price: 280, category: 'Starters', station_id: 'chinese', isVeg: 0, available: 1, image: 'https://images.unsplash.com/photo-1524114664604-cd8133cd67ad?w=400&q=80' },
-    { id: 6, name: 'Caesar Salad', desc: 'Crisp romaine, parmesan, croutons, classic dressing', price: 250, category: 'Starters', station_id: 'chinese', isVeg: 1, available: 1, image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&q=80' },
-    { id: 7, name: 'Grilled Salmon', desc: 'Atlantic salmon with asparagus and lemon butter', price: 550, category: 'Mains', station_id: 'indian', isVeg: 0, available: 1, image: 'https://images.unsplash.com/photo-1485921325833-c519f76c4927?w=400&q=80' },
-    { id: 8, name: 'Tiramisu', desc: 'Classic Italian coffee-flavored dessert', price: 260, category: 'Desserts', station_id: 'desserts', isVeg: 1, available: 1, image: 'https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?w=400&q=80' },
-    { id: 9, name: 'Fresh Orange Juice', desc: 'Freshly squeezed oranges', price: 150, category: 'Beverages', station_id: 'beverages', isVeg: 1, available: 1, image: 'https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=400&q=80' },
-    { id: 10, name: 'Chocolate Lava Cake', desc: 'Warm chocolate cake with molten center', price: 220, category: 'Desserts', station_id: 'desserts', isVeg: 1, available: 1, image: 'https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=400&q=80' }
+    { id: 1, name: 'Truffle Mushroom Risotto', desc: 'Creamy Arborio rice with wild mushrooms and truffle oil', price: 450, category: 'Mains', cuisine: 'Italian', station_id: 'indian', isVeg: 1, available: 1, image: 'https://images.unsplash.com/photo-1473093295043-cdd812d0e601?w=400&q=80' },
+    { id: 2, name: 'Margherita Pizza', desc: 'Classic San Marzano tomato sauce, fresh mozzarella, and basil', price: 380, category: 'Mains', cuisine: 'Italian', station_id: 'chinese', isVeg: 1, available: 1, image: 'https://images.unsplash.com/photo-1604068549290-dea0e4a30536?w=400&q=80' },
+    { id: 3, name: 'Eggs Benedict', desc: 'Poached eggs on English muffins with hollandaise', price: 320, category: 'Breakfast', cuisine: 'Breakfast', station_id: 'breakfast', isVeg: 0, available: 1, image: 'https://images.unsplash.com/photo-1608039829572-78524f79c4c7?w=400&q=80' },
+    { id: 4, name: 'Avocado Toast', desc: 'Smashed avocado on sourdough with cherry tomatoes', price: 290, category: 'Breakfast', cuisine: 'Continental', station_id: 'breakfast', isVeg: 1, available: 1, image: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=400&q=80' },
+    { id: 5, name: 'Buffalo Wings', desc: 'Spicy chicken wings with blue cheese dip', price: 280, category: 'Starters', cuisine: 'American', station_id: 'chinese', isVeg: 0, available: 1, image: 'https://images.unsplash.com/photo-1524114664604-cd8133cd67ad?w=400&q=80' },
+    { id: 6, name: 'Caesar Salad', desc: 'Crisp romaine, parmesan, croutons, classic dressing', price: 250, category: 'Starters', cuisine: 'Continental', station_id: 'chinese', isVeg: 1, available: 1, image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&q=80' },
+    { id: 7, name: 'Grilled Salmon', desc: 'Atlantic salmon with asparagus and lemon butter', price: 550, category: 'Mains', cuisine: 'Continental', station_id: 'indian', isVeg: 0, available: 1, image: 'https://images.unsplash.com/photo-1485921325833-c519f76c4927?w=400&q=80' },
+    { id: 8, name: 'Tiramisu', desc: 'Classic Italian coffee-flavored dessert', price: 260, category: 'Desserts', cuisine: 'Italian', station_id: 'desserts', isVeg: 1, available: 1, image: 'https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?w=400&q=80' },
+    { id: 9, name: 'Fresh Orange Juice', desc: 'Freshly squeezed oranges', price: 150, category: 'Beverages', cuisine: 'Beverages', station_id: 'beverages', isVeg: 1, available: 1, image: 'https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=400&q=80' },
+    { id: 10, name: 'Chocolate Lava Cake', desc: 'Warm chocolate cake with molten center', price: 220, category: 'Desserts', cuisine: 'Desserts', station_id: 'desserts', isVeg: 1, available: 1, image: 'https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=400&q=80' }
   ],
   services: [
-    { name: 'Make My Room / Cleaning', desc: 'Request standard housekeeping, dusting, and bed tidying.', price: 0, category: 'Services', station_id: 'housekeeping', isVeg: 2, available: 1, image: '' },
-    { name: 'Laundry Pick-up & Wash', desc: 'Request laundry collection from your room.', price: 0, category: 'Services', station_id: 'laundry', isVeg: 2, available: 1, image: '' },
-    { name: 'Fresh Towels & Linens', desc: 'Request extra or fresh towels, bedsheets, or pillow covers.', price: 0, category: 'Services', station_id: 'housekeeping', isVeg: 2, available: 1, image: '' }
+    { name: 'Make My Room / Cleaning', desc: 'Request standard housekeeping, dusting, and bed tidying.', price: 0, category: 'Services', cuisine: 'Services', station_id: 'housekeeping', isVeg: 2, available: 1, image: '' },
+    { name: 'Laundry Pick-up & Wash', desc: 'Request laundry collection from your room.', price: 0, category: 'Services', cuisine: 'Services', station_id: 'laundry', isVeg: 2, available: 1, image: '' },
+    { name: 'Fresh Towels & Linens', desc: 'Request extra or fresh towels, bedsheets, or pillow covers.', price: 0, category: 'Services', cuisine: 'Services', station_id: 'housekeeping', isVeg: 2, available: 1, image: '' }
   ],
   room_bills: [
     { room: '101', billId: 'bill_1715000000_1', guestName: 'John Smith', checkIn: '2026-07-10', checkOut: '2026-07-14', roomCharge: 4500, status: 'OPEN', syscon_guest_id: 'GUEST-101' },
@@ -53,6 +53,18 @@ const mapCategoryToStation = (category) => {
     case 'Services': return 'housekeeping';
     default: return 'indian';
   }
+};
+
+const mapCategoryToCuisine = (category, name = '') => {
+  const itemName = String(name).toLowerCase();
+  if (category === 'Services') return 'Services';
+  if (category === 'Beverages') return 'Beverages';
+  if (category === 'Desserts') return 'Desserts';
+  if (category === 'Breakfast') return 'Breakfast';
+  if (itemName.includes('pizza') || itemName.includes('risotto') || itemName.includes('tiramisu')) return 'Italian';
+  if (itemName.includes('salmon') || itemName.includes('caesar') || itemName.includes('avocado')) return 'Continental';
+  if (itemName.includes('wing')) return 'American';
+  return category || 'Indian';
 };
 
 export const initDB = async () => {
@@ -141,6 +153,7 @@ export const initDB = async () => {
       desc TEXT,
       price REAL NOT NULL DEFAULT 0.0,
       category TEXT NOT NULL,
+      cuisine TEXT,
       station_id TEXT REFERENCES service_stations(id),
       isVeg INTEGER NOT NULL DEFAULT 0,
       available INTEGER NOT NULL DEFAULT 1,
@@ -218,6 +231,25 @@ export const initDB = async () => {
     );
   `);
 
+  const menuColumns = await db.all("PRAGMA table_info(menu_items)");
+  if (!menuColumns.some(column => column.name === 'cuisine')) {
+    await db.run('ALTER TABLE menu_items ADD COLUMN cuisine TEXT');
+  }
+  await db.run(`
+    UPDATE menu_items
+    SET cuisine = CASE
+      WHEN category = 'Services' THEN 'Services'
+      WHEN category = 'Beverages' THEN 'Beverages'
+      WHEN category = 'Desserts' THEN 'Desserts'
+      WHEN category = 'Breakfast' THEN 'Breakfast'
+      WHEN lower(name) LIKE '%pizza%' OR lower(name) LIKE '%risotto%' OR lower(name) LIKE '%tiramisu%' THEN 'Italian'
+      WHEN lower(name) LIKE '%salmon%' OR lower(name) LIKE '%caesar%' OR lower(name) LIKE '%avocado%' THEN 'Continental'
+      WHEN lower(name) LIKE '%wing%' THEN 'American'
+      ELSE category
+    END
+    WHERE cuisine IS NULL OR TRIM(cuisine) = ''
+  `);
+
   // Seed default stations if empty
   const stationCount = await db.get('SELECT COUNT(*) as count FROM service_stations');
   if (stationCount.count === 0) {
@@ -263,18 +295,19 @@ export const initDB = async () => {
       // Seed menu items
       const menuItems = jsonData.menu_items || initialData.menu_items;
       for (const item of menuItems) {
-        const station = mapCategoryToStation(item.category);
+        const station = item.station_id || mapCategoryToStation(item.category);
+        const cuisine = item.cuisine || mapCategoryToCuisine(item.category, item.name);
         await db.run(
-          'INSERT OR REPLACE INTO menu_items (id, name, desc, price, category, station_id, isVeg, available, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [item.id, item.name, item.desc, item.price, item.category, station, item.isVeg || 0, item.available || 1, item.image || '']
+          'INSERT OR REPLACE INTO menu_items (id, name, desc, price, category, cuisine, station_id, isVeg, available, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [item.id, item.name, item.desc, item.price, item.category, cuisine, station, item.isVeg || 0, item.available || 1, item.image || '']
         );
       }
 
       // Add default hospitality services
       for (const service of initialData.services) {
         await db.run(
-          'INSERT INTO menu_items (name, desc, price, category, station_id, isVeg, available, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [service.name, service.desc, service.price, service.category, service.station_id, service.isVeg, service.available, service.image]
+          'INSERT INTO menu_items (name, desc, price, category, cuisine, station_id, isVeg, available, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [service.name, service.desc, service.price, service.category, service.cuisine, service.station_id, service.isVeg, service.available, service.image]
         );
       }
 
@@ -314,15 +347,15 @@ export const initDB = async () => {
 
         for (const item of initialData.menu_items) {
           await db.run(
-            'INSERT INTO menu_items (id, name, desc, price, category, station_id, isVeg, available, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [item.id, item.name, item.desc, item.price, item.category, item.station_id, item.isVeg, item.available, item.image]
+            'INSERT INTO menu_items (id, name, desc, price, category, cuisine, station_id, isVeg, available, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [item.id, item.name, item.desc, item.price, item.category, item.cuisine, item.station_id, item.isVeg, item.available, item.image]
           );
         }
 
         for (const service of initialData.services) {
           await db.run(
-            'INSERT INTO menu_items (name, desc, price, category, station_id, isVeg, available, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [service.name, service.desc, service.price, service.category, service.station_id, service.isVeg, service.available, service.image]
+            'INSERT INTO menu_items (name, desc, price, category, cuisine, station_id, isVeg, available, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [service.name, service.desc, service.price, service.category, service.cuisine, service.station_id, service.isVeg, service.available, service.image]
           );
         }
       }

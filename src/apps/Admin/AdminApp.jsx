@@ -12,6 +12,7 @@ import { PinGate } from '../../components/auth/PinGate';
 import { CONFIG } from '../../config';
 
 const ACCENT_BLUE = '#2563EB';
+const CUISINE_OPTIONS = ['Indian', 'Chinese', 'Continental', 'Italian', 'American', 'Breakfast', 'Desserts', 'Beverages', 'Services', 'Custom'];
 
 // Unsplash presets for beautiful food pictures
 const IMAGE_PRESETS = [
@@ -57,6 +58,7 @@ export const AdminApp = ({ config = CONFIG }) => {
     desc: '', 
     price: '', 
     category: 'Mains', 
+    cuisine: 'Indian',
     station_id: 'indian',
     isVeg: true, 
     image: IMAGE_PRESETS[0].url 
@@ -143,6 +145,7 @@ export const AdminApp = ({ config = CONFIG }) => {
       ...newItem,
       id: Date.now(),
       price: Number(newItem.price),
+      cuisine: newItem.cuisine || newItem.category,
       station_id: newItem.station_id || stationOptions[0]?.id || 'indian',
       available: true
     };
@@ -153,6 +156,7 @@ export const AdminApp = ({ config = CONFIG }) => {
       desc: '',
       price: '',
       category: 'Mains',
+      cuisine: 'Indian',
       station_id: stationOptions[0]?.id || 'indian',
       isVeg: true,
       image: IMAGE_PRESETS[0].url
@@ -357,7 +361,11 @@ export const AdminApp = ({ config = CONFIG }) => {
 
   const filteredMenuItems = useMemo(() => {
     return menuItems.filter(item => {
-      const matchesSearch = item.name.toLowerCase().includes(menuSearch.toLowerCase()) || (item.desc && item.desc.toLowerCase().includes(menuSearch.toLowerCase()));
+      const query = menuSearch.toLowerCase();
+      const matchesSearch =
+        item.name.toLowerCase().includes(query) ||
+        (item.desc && item.desc.toLowerCase().includes(query)) ||
+        (item.cuisine && item.cuisine.toLowerCase().includes(query));
       const matchesCategory = activeMenuCategory === 'All' || item.category === activeMenuCategory;
       return matchesSearch && matchesCategory;
     });
@@ -1271,6 +1279,9 @@ export const AdminApp = ({ config = CONFIG }) => {
                       <span style={{ background: 'rgba(7,20,40,0.72)', backdropFilter: 'blur(8px)', color: C.white, fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 999, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                         {item.category}
                       </span>
+                      <span style={{ background: 'rgba(255,255,255,0.92)', color: C.text, fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 999, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        {item.cuisine || item.category}
+                      </span>
                       <span style={{ background: item.available ? 'rgba(16,185,129,0.9)' : 'rgba(148,163,184,0.95)', color: C.white, fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 999, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                         {item.available ? 'Available' : 'Disabled'}
                       </span>
@@ -1286,10 +1297,23 @@ export const AdminApp = ({ config = CONFIG }) => {
                       <p style={{ fontSize: 12.5, color: C.textSub, margin: '6px 0 0 0', lineHeight: 1.45 }}>{item.desc}</p>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, marginTop: 'auto' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginTop: 'auto' }}>
                       <div style={{ padding: '10px 12px', borderRadius: 14, background: C.borderLight }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase' }}>Item Type</div>
                         <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginTop: 4 }}>{item.isVeg ? 'Veg' : 'Non-Veg'}</div>
+                      </div>
+                      <div style={{ padding: '10px 12px', borderRadius: 14, background: C.borderLight }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase' }}>Cuisine</div>
+                        <select
+                          value={item.cuisine || item.category}
+                          onChange={(event) => {
+                            const cuisine = event.target.value;
+                            setMenuItems(menuItems.map(menuItem => menuItem.id === item.id ? { ...menuItem, cuisine } : menuItem));
+                          }}
+                          style={{ width: '100%', marginTop: 4, border: 'none', background: 'transparent', color: C.text, fontSize: 13, fontWeight: 800, outline: 'none', fontFamily: 'inherit' }}
+                        >
+                          {CUISINE_OPTIONS.map(cuisine => <option key={cuisine} value={cuisine}>{cuisine}</option>)}
+                        </select>
                       </div>
                       <div style={{ padding: '10px 12px', borderRadius: 14, background: C.borderLight }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase' }}>Pricing</div>
@@ -1872,6 +1896,13 @@ export const AdminApp = ({ config = CONFIG }) => {
                     {['Breakfast', 'Starters', 'Mains', 'Desserts', 'Beverages'].map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Cuisine for KOT Printing</label>
+                <select value={newItem.cuisine} onChange={e => setNewItem({...newItem, cuisine: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.white }}>
+                  {CUISINE_OPTIONS.map(cuisine => <option key={cuisine} value={cuisine}>{cuisine}</option>)}
+                </select>
               </div>
 
               <div>

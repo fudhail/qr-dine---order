@@ -113,6 +113,7 @@ const getItemMeta = (item) => {
 
 const FeaturedItemCard = ({ item, meta, qty, updateQty, onCardClick }) => {
   const isInCart = qty > 0;
+  const isUnavailable = !item.available;
 
   return (
     <div style={{ minWidth: 204, maxWidth: 204, display: 'flex', cursor: 'pointer' }} onClick={() => onCardClick(item)}>
@@ -152,7 +153,13 @@ const FeaturedItemCard = ({ item, meta, qty, updateQty, onCardClick }) => {
           </div>
           <div style={{ display: 'none' }} onClick={e => e.stopPropagation()}>
             <span style={{ fontSize: 14, fontWeight: 800, color: C.text }}>₹{item.price}</span>
-            <QuantityControl qty={qty} onAdd={() => updateQty(item, 1)} onIncrease={() => updateQty(item, 1)} onDecrease={() => updateQty(item, -1)} />
+            {isUnavailable ? (
+              <div style={{ height: 34, minWidth: 96, borderRadius: 999, background: '#E2E8F0', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>
+                Unavailable
+              </div>
+            ) : (
+              <QuantityControl qty={qty} onAdd={() => updateQty(item, 1)} onIncrease={() => updateQty(item, 1)} onDecrease={() => updateQty(item, -1)} />
+            )}
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }} onClick={e => e.stopPropagation()}>
             <span style={{ fontSize: 17, fontWeight: 900, color: C.text }}>₹{item.price}</span>
@@ -176,46 +183,62 @@ const FeaturedItemCard = ({ item, meta, qty, updateQty, onCardClick }) => {
 };
 
 const MenuItemCard = ({ item, qty, isTimingHighlight, updateQty, onCardClick }) => {
+  const isUnavailable = !item.available;
+
   return (
     <Card
-      onClick={() => onCardClick(item)}
-      className="card-interactive"
+      onClick={() => {
+        if (!isUnavailable) onCardClick(item);
+      }}
+      className={isUnavailable ? '' : 'card-interactive'}
       style={{ 
         padding: 0, 
         display: 'flex', 
         height: 120, 
         borderRadius: 20, 
-        border: qty > 0 ? `1.5px solid ${ACCENT_BLUE}` : (isTimingHighlight ? `1.5px solid ${ACCENT_BLUE}25` : '1px solid rgba(0,0,0,0.04)'), 
+        border: isUnavailable ? '1px solid rgba(148,163,184,0.28)' : qty > 0 ? `1.5px solid ${ACCENT_BLUE}` : (isTimingHighlight ? `1.5px solid ${ACCENT_BLUE}25` : '1px solid rgba(0,0,0,0.04)'), 
         boxShadow: '0 6px 18px rgba(15,27,43,0.04)', 
-        background: C.white, 
-        cursor: 'pointer', 
+        background: isUnavailable ? '#F8FAFC' : C.white, 
+        cursor: isUnavailable ? 'not-allowed' : 'pointer', 
         position: 'relative', 
-        overflow: 'hidden'
+        overflow: 'hidden',
+        opacity: isUnavailable ? 0.72 : 1
       }}
     >
       <div style={{ width: '35%', height: '100%', flexShrink: 0, position: 'relative', background: C.borderLight }}>
         {item.image ? (
-          <img src={item.image} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <img src={item.image} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: isUnavailable ? 'grayscale(0.75)' : 'none' }} />
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><Utensils size={24} style={{ opacity: 0.2 }} /></div>
         )}
         <div style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(255,255,255,0.95)', padding: '3px 5px', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
           <VegDot isVeg={item.isVeg} />
         </div>
+        {isUnavailable && (
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.42)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ background: '#FFF', color: '#64748B', borderRadius: 999, padding: '5px 9px', fontSize: 10.5, fontWeight: 900, textTransform: 'uppercase' }}>Unavailable</span>
+          </div>
+        )}
       </div>
       
       <div style={{ flex: 1, padding: 12, display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between', boxSizing: 'border-box' }}>
         <div>
-          <h3 style={{ fontSize: 15, color: C.text, margin: 0, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical' }}>{item.name}</h3>
+          <h3 style={{ fontSize: 15, color: isUnavailable ? C.textMuted : C.text, margin: 0, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical' }}>{item.name}</h3>
           <p style={{ color: C.textSub, fontSize: 12, lineHeight: 1.3, margin: '4px 0 0 0', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-            {item.desc || 'Freshly prepared for you.'}
+            {isUnavailable ? 'Currently unavailable. Please choose another item.' : (item.desc || 'Freshly prepared for you.')}
           </p>
         </div>
         
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontWeight: 800, color: ACCENT_BLUE, fontSize: 16 }}>₹{item.price}</div>
           <div onClick={e => e.stopPropagation()}>
-            <QuantityControl qty={qty} onAdd={() => updateQty(item, 1)} onIncrease={() => updateQty(item, 1)} onDecrease={() => updateQty(item, -1)} />
+            {isUnavailable ? (
+              <div style={{ height: 34, minWidth: 96, borderRadius: 999, background: '#E2E8F0', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>
+                Unavailable
+              </div>
+            ) : (
+              <QuantityControl qty={qty} onAdd={() => updateQty(item, 1)} onIncrease={() => updateQty(item, 1)} onDecrease={() => updateQty(item, -1)} />
+            )}
           </div>
         </div>
       </div>
@@ -253,6 +276,7 @@ export const GuestApp = () => {
   const [deliveryPreference, setDeliveryPreference] = useState('ALL_AT_ONCE');
   const [toast, setToast] = useState(null);
   const [vegOnly, setVegOnly] = useState(false);
+  const [nowTick, setNowTick] = useState(0);
 
   // Custom Item request state
   const [showCustomModal, setShowCustomModal] = useState(false);
@@ -290,6 +314,12 @@ export const GuestApp = () => {
     link.rel = 'stylesheet';
     document.head.appendChild(link);
     return () => { document.head.removeChild(link); };
+  }, []);
+
+  useEffect(() => {
+    setNowTick(Date.now());
+    const timer = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -376,12 +406,18 @@ export const GuestApp = () => {
       i.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (i.desc && i.desc.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesVeg = !vegOnly || i.isVeg === 1;
-    return i.available && matchesCategory && matchesSearch && matchesVeg;
+    return matchesCategory && matchesSearch && matchesVeg;
   });
   const serviceItems = menuItems.filter(i => i.category === 'Services' && i.available);
   const mealSpecialItem = menuItems.find(i => Number(i.id) === Number(mealConfig.special.id) && i.available) || null;
 
   const updateQty = (item, delta) => {
+    const liveItem = menuItems.find(menuItem => String(menuItem.id) === String(item.id));
+    if (delta > 0 && (item.available === false || liveItem?.available === false)) {
+      showToast(`${item.name} is currently unavailable.`);
+      return;
+    }
+
     setCart(prev => {
       const existing = prev.find(i => i.id === item.id);
       if (existing) {
@@ -504,6 +540,18 @@ export const GuestApp = () => {
   const placeOrder = (customPayload = null) => {
     const isService = customPayload && customPayload.type === 'SERVICE';
 
+    if (!isService) {
+      const unavailableCartItem = cart.find(item => {
+        if (String(item.id).startsWith('custom-')) return false;
+        const liveItem = menuItems.find(menuItem => String(menuItem.id) === String(item.id));
+        return liveItem?.available === false;
+      });
+      if (unavailableCartItem) {
+        showToast(`${unavailableCartItem.name} is unavailable. Please choose another item.`);
+        return;
+      }
+    }
+
     const orderPayload = isService ? {
       room: roomNumber,
       type: 'SERVICE',
@@ -625,6 +673,8 @@ export const GuestApp = () => {
   const trackingOrder =
     orders.find(o => o.id === lastOrderId && o.type === 'FOOD' && activeFoodStatuses.includes(o.status)) ||
     orders.find(o => String(o.room) === String(roomNumber) && o.type === 'FOOD' && activeFoodStatuses.includes(o.status));
+  const cancelSecondsLeft = trackingOrder ? Math.max(0, Math.ceil((60000 - ((nowTick || Number(trackingOrder.createdAt || 0)) - Number(trackingOrder.createdAt || 0))) / 1000)) : 0;
+  const canCancelTrackingOrder = Boolean(trackingOrder && cancelSecondsLeft > 0 && !['DELIVERED', 'CANCELLED'].includes(trackingOrder.status));
 
   // Trigger feedback form automatically if order completed/delivered
   useEffect(() => {
@@ -695,6 +745,25 @@ export const GuestApp = () => {
             <p style={{ fontSize: 14, color: C.textSub, lineHeight: 1.5, marginBottom: 20 }}>
               We apologize, but {outOfStockAlert.name} just ran out in the kitchen. Please select an alternative dish.
             </p>
+            {Array.isArray(outOfStockAlert.alternatives) && outOfStockAlert.alternatives.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, textAlign: 'left' }}>
+                {outOfStockAlert.alternatives.slice(0, 3).map(alt => (
+                  <button
+                    key={alt.id}
+                    onClick={() => {
+                      const liveItem = menuItems.find(item => String(item.id) === String(alt.id)) || alt;
+                      setOutOfStockAlert(null);
+                      setCurrentScreen('menu');
+                      setSelectedItem(liveItem);
+                    }}
+                    style={{ border: `1px solid ${C.borderLight}`, background: '#F8FAFC', color: C.text, borderRadius: 14, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', fontFamily: 'inherit', cursor: 'pointer' }}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{alt.name}</span>
+                    <span style={{ fontSize: 12, color: ACCENT_BLUE, fontWeight: 900 }}>Rs. {alt.price}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button 
                 onClick={() => {
@@ -1239,12 +1308,12 @@ export const GuestApp = () => {
                   </div>
                 </div>
 
-                {trackingOrder.status === 'NEW' && (
+                {canCancelTrackingOrder && (
                   <button 
                     onClick={() => cancelActiveOrder(trackingOrder.id)}
                     style={{ background: '#FEE2E2', color: ACCENT_RED, border: 'none', width: '100%', padding: 10, borderRadius: 12, fontWeight: 700, cursor: 'pointer', fontSize: 12 }}
                   >
-                    Cancel Order
+                    Cancel Order ({cancelSecondsLeft}s)
                   </button>
                 )}
               </Card>

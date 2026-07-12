@@ -41,6 +41,26 @@ const loginLimiter = rateLimit({
   message: { error: 'Too many login attempts, please try again later' }
 });
 
+const sanitizeKotPart = (value, fallback = 'KOT') => {
+  const cleaned = String(value || fallback).replace(/[^a-z0-9]/gi, '').slice(0, 4).toUpperCase();
+  return cleaned || fallback;
+};
+
+const getAlternativesForItem = async (item) => {
+  if (!item) return [];
+  return db.all(
+    `SELECT id, name, desc, price, category, cuisine, station_id, isVeg, available, image
+     FROM menu_items
+     WHERE available = 1 AND id <> ? AND category = ?
+     ORDER BY 
+       CASE WHEN COALESCE(cuisine, '') = COALESCE(?, '') THEN 0 ELSE 1 END,
+       ABS(price - ?) ASC,
+       name ASC
+     LIMIT 4`,
+    [item.id, item.category, item.cuisine || '', Number(item.price || 0)]
+  );
+};
+
 // Helper to calculate minutesAgo for frontend compatibility
 const injectMinutesAgo = (orders) => {
   const now = Date.now();
@@ -219,6 +239,8 @@ io.on('connection', async (socket) => {
             qty,
             isVeg: dbItem.isVeg,
             category: dbItem.category,
+            cuisine: dbItem.cuisine || dbItem.category,
+            station_id: dbItem.station_id || 'indian',
             status: 'PENDING'
           });
           subtotal += dbItem.price * qty;
@@ -231,6 +253,8 @@ io.on('connection', async (socket) => {
             price: 0,
             qty,
             category: 'Custom',
+            cuisine: 'Custom',
+            station_id: 'indian',
             status: 'PENDING'
           });
         }
@@ -248,6 +272,7 @@ io.on('connection', async (socket) => {
     const cgst = parseFloat(((subtotal + serviceCharge) * (cgstRate / 100)).toFixed(2));
     const sgst = parseFloat(((subtotal + serviceCharge) * (sgstRate / 100)).toFixed(2));
     const total = parseFloat((subtotal + serviceCharge + cgst + sgst).toFixed(2));
+    const initialStatus = orderType === 'FOOD' ? 'PREPARING' : 'NEW';
 
     // Save master order
     await db.run(
@@ -257,7 +282,7 @@ io.on('connection', async (socket) => {
         orderId, 
         token, 
         session.room, 
-        'NEW', 
+        initialStatus, 
         orderType, 
         createdAt, 
         order.deliveryPreference || 'AS_READY', 
@@ -271,28 +296,25 @@ io.on('connection', async (socket) => {
 
     // Dynamic KOT splitting
     if (orderType === 'FOOD') {
-      // Group items by station_id
-      const dbItems = await db.all('SELECT id, station_id FROM menu_items');
-      const itemStationMap = {};
-      dbItems.forEach(i => { itemStationMap[i.id] = i.station_id; });
-
       const stationGroups = {};
       for (const item of validatedItems) {
-        // If it's a custom/open item, it won't have an ID, so route it to 'indian' by default
-        const stationId = item.id ? (itemStationMap[item.id] || 'indian') : 'indian';
-        if (!stationGroups[stationId]) {
-          stationGroups[stationId] = [];
+        const stationId = item.station_id || 'indian';
+        const cuisine = item.cuisine || item.category || 'Kitchen';
+        const groupKey = `${stationId}::${cuisine}`;
+        if (!stationGroups[groupKey]) {
+          stationGroups[groupKey] = { stationId, cuisine, items: [] };
         }
-        stationGroups[stationId].push(item);
+        stationGroups[groupKey].items.push(item);
       }
 
-      // Create KOT for each station group
-      for (const [stationId, items] of Object.entries(stationGroups)) {
-        const suffix = stationId.substring(0, 3).toUpperCase();
-        const kotNumber = `KOT-${orderId}-${suffix}`;
+      // Create separate KOT slips for each pantry station and cuisine counter.
+      for (const group of Object.values(stationGroups)) {
+        const stationSuffix = sanitizeKotPart(group.stationId, 'STA');
+        const cuisineSuffix = sanitizeKotPart(group.cuisine, 'FOOD');
+        const kotNumber = `KOT-${orderId}-${stationSuffix}-${cuisineSuffix}`;
         await db.run(
           `INSERT INTO kots (order_id, station_id, kot_number, items, status) VALUES (?, ?, ?, ?, ?)`,
-          [orderId, stationId, kotNumber, JSON.stringify(items), 'PENDING']
+          [orderId, group.stationId, kotNumber, JSON.stringify(group.items), 'PENDING']
         );
       }
     }
@@ -508,14 +530,14 @@ app.post('/api/admin/kots/:id/status', authenticateStaff, async (req, res) => {
   res.json({ success: true });
 });
 
-// Cancel active order if status is NEW (Admin/Staff only)
+// Cancel an active order from the staff side.
 app.post('/api/admin/orders/:id/cancel', authenticateStaff, async (req, res) => {
   const orderId = req.params.id;
   const order = await db.get('SELECT status FROM orders WHERE id = ?', [orderId]);
   
   if (!order) return res.status(404).json({ error: 'Order not found' });
-  if (order.status !== 'NEW') {
-    return res.status(400).json({ error: 'Order is already being prepared and cannot be cancelled' });
+  if (['DELIVERED', 'CANCELLED'].includes(order.status)) {
+    return res.status(400).json({ error: 'Order is already closed and cannot be cancelled' });
   }
 
   await db.run("UPDATE orders SET status = 'CANCELLED' WHERE id = ?", [orderId]);
@@ -534,14 +556,17 @@ app.post('/api/guest/orders/:id/cancel', async (req, res) => {
   if (!session) return res.status(401).json({ error: 'Invalid or expired session' });
 
   const orderId = req.params.id;
-  const order = await db.get('SELECT room, status FROM orders WHERE id = ?', [orderId]);
+  const order = await db.get('SELECT room, status, createdAt FROM orders WHERE id = ?', [orderId]);
   
   if (!order) return res.status(404).json({ error: 'Order not found' });
   if (String(order.room) !== String(session.room)) {
     return res.status(403).json({ error: 'Unauthorized to cancel this order' });
   }
-  if (order.status !== 'NEW') {
-    return res.status(400).json({ error: 'Order is already being prepared and cannot be cancelled' });
+  if (['DELIVERED', 'CANCELLED'].includes(order.status)) {
+    return res.status(400).json({ error: 'Order is already closed and cannot be cancelled' });
+  }
+  if (Date.now() - Number(order.createdAt || 0) > 60000) {
+    return res.status(400).json({ error: 'The one-minute hassle-free cancellation window has ended. Please call the pantry for help.' });
   }
 
   await db.run("UPDATE orders SET status = 'CANCELLED' WHERE id = ?", [orderId]);
@@ -647,20 +672,44 @@ app.post('/api/admin/sos/:id/resolve', authenticateStaff, async (req, res) => {
   res.json({ success: true });
 });
 
-// Out-of-Stock notifier toggle
+// Out-of-stock notifier toggle. Pantry/Admin can disable an item and affected
+// active guest orders get alternatives scoped to their room session.
 app.post('/api/admin/menu_items/out-of-stock', authenticateStaff, async (req, res) => {
   const { itemId, available } = req.body;
+  const item = await db.get('SELECT * FROM menu_items WHERE id = ?', [itemId]);
+  if (!item) return res.status(404).json({ error: 'Menu item not found' });
   
   await db.run('UPDATE menu_items SET available = ? WHERE id = ?', [available ? 1 : 0, itemId]);
   
+  let alternatives = [];
   if (!available) {
-    const item = await db.get('SELECT name FROM menu_items WHERE id = ?', [itemId]);
-    // Notify all guests via WebSocket that this item has gone out of stock
-    io.emit('item_out_of_stock_alert', { itemId, name: item?.name });
+    alternatives = await getAlternativesForItem(item);
+    const activeOrders = await db.all(
+      "SELECT id, room, items FROM orders WHERE type = 'FOOD' AND status NOT IN ('DELIVERED', 'CANCELLED')"
+    );
+
+    for (const order of activeOrders) {
+      const parsedItems = (() => {
+        try {
+          return typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
+        } catch {
+          return [];
+        }
+      })();
+      const hasAffectedItem = parsedItems.some(orderItem => String(orderItem.id) === String(itemId));
+      if (hasAffectedItem) {
+        io.to(`room_${order.room}`).emit('item_out_of_stock_alert', {
+          itemId,
+          name: item.name,
+          orderId: order.id,
+          alternatives
+        });
+      }
+    }
   }
   
   await broadcastState();
-  res.json({ success: true });
+  res.json({ success: true, alternatives });
 });
 
 // Submit guest feedback
@@ -721,18 +770,19 @@ app.post('/api/admin/menu_items', authenticateAdmin, async (req, res) => {
 
   for (const item of newMenuItems) {
     await db.run(
-      `INSERT INTO menu_items (id, name, desc, price, category, station_id, isVeg, available, image) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO menu_items (id, name, desc, price, category, cuisine, station_id, isVeg, available, image) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET 
          name = excluded.name,
          desc = excluded.desc,
          price = excluded.price,
          category = excluded.category,
+         cuisine = excluded.cuisine,
          station_id = excluded.station_id,
          isVeg = excluded.isVeg,
          available = excluded.available,
          image = excluded.image`,
-      [item.id, item.name, item.desc, item.price, item.category, item.station_id || 'indian', item.isVeg ? 1 : 0, item.available ? 1 : 0, item.image]
+      [item.id, item.name, item.desc, item.price, item.category, item.cuisine || item.category, item.station_id || 'indian', item.isVeg ? 1 : 0, item.available ? 1 : 0, item.image]
     );
   }
   await broadcastState();
