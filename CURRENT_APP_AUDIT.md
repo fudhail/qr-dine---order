@@ -13,7 +13,7 @@ Date: 2026-07-12
 - Active food order tracking shows only real active statuses.
 - Cancel is allowed only while an order is `NEW`.
 - Services are driven from active `Services` menu items.
-- SOS creates an emergency request and triggers the KDS alert flow.
+- SOS uses a dedicated alert/incident system separate from orders, billing, KOTs, and room-service status.
 - Feedback is accepted only for delivered orders from the same session/room.
 
 ### Kitchen / KDS
@@ -23,7 +23,7 @@ Date: 2026-07-12
 - Partial dispatch is now persisted by the backend and updates order status server-side.
 - Dispatched/completed items can no longer be toggled back accidentally.
 - Stock toggles use the out-of-stock endpoint and notify guests when an item becomes unavailable.
-- SOS appears as a full-screen alert and can be cleared by staff.
+- SOS appears as a full-screen incident alert, can be acknowledged to silence the alarm, and can be resolved by staff.
 
 ### Admin
 - Admin has dashboard, billing, dining orders, hospitality requests, menu, reports, and settings.
@@ -33,6 +33,7 @@ Date: 2026-07-12
 - Add Dish now includes kitchen/service station assignment.
 - Menu cards show the assigned station so routing can be checked visually.
 - Deleting a dish now requires confirmation.
+- Admin receives the same dedicated SOS incident overlay as KDS and can acknowledge or resolve alerts.
 
 ### Backend
 - Orders are validated against database menu items before insertion.
@@ -41,6 +42,7 @@ Date: 2026-07-12
 - Partial dispatch updates order items and master order status.
 - Syscon posting is restricted to delivered billable food orders.
 - Guest cancellation, feedback, and order state are session/room scoped.
+- SOS alerts are stored in `sos_alerts` with `OPEN`, `ACKNOWLEDGED`, `RESOLVED`, and `CANCELLED` lifecycle states.
 
 ## Remaining Recommendations
 

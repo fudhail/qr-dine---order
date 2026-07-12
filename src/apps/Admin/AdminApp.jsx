@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { 
   LayoutDashboard, UtensilsCrossed, Printer, X, Plus, ClipboardList, 
   TrendingUp, Package, Star, Clock, Trash2, 
@@ -26,6 +26,7 @@ import { useStore } from '../../store/useStore';
 
 export const AdminApp = ({ config = CONFIG }) => {
   const orders = useStore(state => state.orders);
+  const sosAlerts = useStore(state => state.sosAlerts);
   const menuItems = useStore(state => state.menuItems);
   const setMenuItems = useStore(state => state.setMenuItems);
   const roomBills = useStore(state => state.roomBills);
@@ -48,6 +49,7 @@ export const AdminApp = ({ config = CONFIG }) => {
   const [menuSearch, setMenuSearch] = useState('');
   const [billSearch, setBillSearch] = useState('');
   const [activeMenuCategory, setActiveMenuCategory] = useState('All');
+  const sosAudioRef = useRef(null);
   
   // New menu item form state
   const [newItem, setNewItem] = useState({ 
@@ -293,6 +295,36 @@ export const AdminApp = ({ config = CONFIG }) => {
     }
   };
 
+  const acknowledgeSOS = async (alertId) => {
+    try {
+      await fetch(`/api/admin/sos/${alertId}/acknowledge`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${sessionStorage.getItem('adminToken')}` }
+      });
+    } catch {
+      alert('Network error while acknowledging SOS.');
+    }
+  };
+
+  const resolveSOS = async (alertId) => {
+    try {
+      const response = await fetch(`/api/admin/sos/${alertId}/resolve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('adminToken')}`
+        },
+        body: JSON.stringify({ note: 'Admin marked SOS resolved' })
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        alert(data.error || 'Could not resolve SOS alert.');
+      }
+    } catch {
+      alert('Network error while resolving SOS.');
+    }
+  };
+
   // Analytics derivations
   const totalSalesFB = useMemo(() => {
     return orders.filter(o => o.status !== 'CANCELLED').reduce((sum, o) => sum + o.total, 0);
@@ -355,12 +387,59 @@ export const AdminApp = ({ config = CONFIG }) => {
     { id: 'settings', label: 'Settings', icon: Edit3 },
   ];
 
+  const activeSOS = useMemo(() => {
+    return sosAlerts.find(alert => !['RESOLVED', 'CANCELLED'].includes(alert.status)) || null;
+  }, [sosAlerts]);
+
+  useEffect(() => {
+    if (activeSOS?.status === 'OPEN') {
+      try {
+        if (!sosAudioRef.current) {
+          sosAudioRef.current = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg');
+          sosAudioRef.current.loop = true;
+        }
+        sosAudioRef.current.play().catch(() => {});
+      } catch (err) {
+        console.debug('Admin SOS audio could not start automatically:', err);
+      }
+    } else if (sosAudioRef.current) {
+      sosAudioRef.current.pause();
+      sosAudioRef.current.currentTime = 0;
+    }
+  }, [activeSOS]);
+
   if (!adminAuth) {
     return <PinGate role="admin" onLogin={login} />;
   }
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: C.sand, fontFamily: '"Plus Jakarta Sans", sans-serif', color: C.text }}>
+      {activeSOS && (
+        <div className="no-print" style={{ position: 'fixed', inset: 0, background: 'rgba(220, 38, 38, 0.92)', zIndex: 100000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#FFF', textAlign: 'center', padding: 32 }}>
+          <AlertCircle size={82} style={{ marginBottom: 20 }} />
+          <h1 style={{ fontSize: 48, fontWeight: 950, margin: 0 }}>EMERGENCY SOS ALERT</h1>
+          <p style={{ fontSize: 26, fontWeight: 800, margin: '12px 0 0' }}>Room {activeSOS.room} needs urgent assistance</p>
+          <div style={{ marginTop: 12, fontSize: 16, fontWeight: 800, background: 'rgba(255,255,255,0.16)', padding: '8px 14px', borderRadius: 999 }}>
+            {activeSOS.status === 'ACKNOWLEDGED' ? 'Acknowledged by staff' : 'New emergency alert'}
+          </div>
+          <div style={{ display: 'flex', gap: 14, marginTop: 32, flexWrap: 'wrap', justifyContent: 'center' }}>
+            {activeSOS.status === 'OPEN' && (
+              <button
+                onClick={() => acknowledgeSOS(activeSOS.id)}
+                style={{ background: '#111827', color: '#FFF', border: 'none', padding: '16px 30px', borderRadius: 16, fontSize: 16, fontWeight: 900, cursor: 'pointer', boxShadow: '0 12px 28px rgba(0,0,0,0.22)' }}
+              >
+                Acknowledge
+              </button>
+            )}
+            <button
+              onClick={() => resolveSOS(activeSOS.id)}
+              style={{ background: '#FFF', color: '#DC2626', border: 'none', padding: '16px 30px', borderRadius: 16, fontSize: 16, fontWeight: 900, cursor: 'pointer', boxShadow: '0 12px 28px rgba(0,0,0,0.22)' }}
+            >
+              Mark Resolved
+            </button>
+          </div>
+        </div>
+      )}
       
       {/* SIDEBAR */}
       <div 

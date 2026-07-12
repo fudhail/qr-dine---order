@@ -50,19 +50,30 @@ const injectMinutesAgo = (orders) => {
   }));
 };
 
+const injectAlertMinutesAgo = (alerts) => {
+  const now = Date.now();
+  return alerts.map(alert => ({
+    ...alert,
+    minutesAgo: Math.floor((now - alert.createdAt) / 60000)
+  }));
+};
+
 let db;
 
 // Broadcast updated state to clients
 const sendGuestState = async (target, room) => {
   const state = await getFullState(db);
   state.orders = injectMinutesAgo(state.orders);
+  state.sosAlerts = injectAlertMinutesAgo(state.sosAlerts || []);
   
   // Filter orders to only include this guest room's orders
   const filteredOrders = state.orders.filter(o => String(o.room) === String(room));
+  const filteredSosAlerts = state.sosAlerts.filter(alert => String(alert.room) === String(room));
   
   const guestState = {
     menuItems: state.menuItems,
     orders: filteredOrders,
+    sosAlerts: filteredSosAlerts,
     config: { 
       cgst: state.config.cgst, 
       sgst: state.config.sgst, 
@@ -82,6 +93,7 @@ const broadcastState = async () => {
   if (!db) return;
   const state = await getFullState(db);
   state.orders = injectMinutesAgo(state.orders);
+  state.sosAlerts = injectAlertMinutesAgo(state.sosAlerts || []);
   
   io.to('admin_room').emit('admin_state_update', state);
 
@@ -106,6 +118,7 @@ io.on('connection', async (socket) => {
     socket.emit('guest_state_update', {
       menuItems: state.menuItems,
       orders: [],
+      sosAlerts: [],
       config: { 
         cgst: state.config.cgst, 
         sgst: state.config.sgst, 
@@ -130,6 +143,7 @@ io.on('connection', async (socket) => {
       socket.join('admin_room');
       const state = await getFullState(db);
       state.orders = injectMinutesAgo(state.orders);
+      state.sosAlerts = injectAlertMinutesAgo(state.sosAlerts || []);
       socket.emit('admin_state_update', state);
     }
   });
@@ -137,6 +151,10 @@ io.on('connection', async (socket) => {
   // Authenticated order placement
   socket.on('place_order', async ({ order, sessionId }) => {
     const orderType = order.type || 'FOOD';
+    if (orderType === 'EMERGENCY') {
+      socket.emit('order_rejected', { reason: 'SOS alerts must use the emergency alert system, not room-service ordering.' });
+      return;
+    }
     const session = activeSessions.get(sessionId);
     if (!session) {
       socket.emit('order_rejected', { reason: 'Your session has expired. Please scan your room QR code again.' });
@@ -280,11 +298,7 @@ io.on('connection', async (socket) => {
     }
 
     await broadcastState();
-    if (orderType === 'EMERGENCY') {
-      socket.emit('sos_accepted', { orderId });
-    } else {
-      socket.emit('order_accepted', { orderId });
-    }
+    socket.emit('order_accepted', { orderId });
   });
 
   socket.on('disconnect', () => {
@@ -533,6 +547,102 @@ app.post('/api/guest/orders/:id/cancel', async (req, res) => {
   await db.run("UPDATE orders SET status = 'CANCELLED' WHERE id = ?", [orderId]);
   await db.run("DELETE FROM kots WHERE order_id = ?", [orderId]);
   
+  await broadcastState();
+  res.json({ success: true });
+});
+
+// Guest SOS alert creation with session validation. This is intentionally
+// separate from orders/KOT/billing.
+app.post('/api/guest/sos', async (req, res) => {
+  const { sessionId } = req.body;
+  if (!sessionId) return res.status(401).json({ error: 'Session ID required' });
+
+  const session = activeSessions.get(sessionId);
+  if (!session) return res.status(401).json({ error: 'Invalid or expired session' });
+  session.lastActivity = Date.now();
+
+  const existingAlert = await db.get(
+    "SELECT * FROM sos_alerts WHERE room = ? AND status IN ('OPEN', 'ACKNOWLEDGED') ORDER BY createdAt DESC LIMIT 1",
+    [session.room]
+  );
+  if (existingAlert) {
+    await broadcastState();
+    return res.json({ success: true, alertId: existingAlert.id, existing: true });
+  }
+
+  const createdAt = Date.now();
+  const result = await db.run(
+    `INSERT INTO sos_alerts (room, status, severity, source, message, createdAt) 
+     VALUES (?, 'OPEN', 'EMERGENCY', 'GUEST_QR', ?, ?)`,
+    [session.room, 'Guest pressed the emergency SOS button', createdAt]
+  );
+
+  await broadcastState();
+  res.json({ success: true, alertId: result.lastID });
+});
+
+// Guest-safe SOS clear with session validation
+app.post('/api/guest/sos/:id/safe', async (req, res) => {
+  const { sessionId } = req.body;
+  if (!sessionId) return res.status(401).json({ error: 'Session ID required' });
+
+  const session = activeSessions.get(sessionId);
+  if (!session) return res.status(401).json({ error: 'Invalid or expired session' });
+
+  const alertId = req.params.id;
+  const alert = await db.get('SELECT * FROM sos_alerts WHERE id = ?', [alertId]);
+
+  if (!alert) return res.status(404).json({ error: 'SOS alert not found' });
+  if (String(alert.room) !== String(session.room)) {
+    return res.status(403).json({ error: 'Unauthorized to clear this SOS alert' });
+  }
+
+  if (!['RESOLVED', 'CANCELLED'].includes(alert.status)) {
+    await db.run(
+      `UPDATE sos_alerts 
+       SET status = 'RESOLVED', resolvedAt = ?, resolvedBy = 'guest', resolutionNote = ? 
+       WHERE id = ?`,
+      [Date.now(), 'Guest marked themselves safe', alertId]
+    );
+  }
+
+  await broadcastState();
+  res.json({ success: true });
+});
+
+app.post('/api/admin/sos/:id/acknowledge', authenticateStaff, async (req, res) => {
+  const alertId = req.params.id;
+  const alert = await db.get('SELECT status FROM sos_alerts WHERE id = ?', [alertId]);
+  if (!alert) return res.status(404).json({ error: 'SOS alert not found' });
+
+  if (alert.status === 'OPEN') {
+    await db.run(
+      `UPDATE sos_alerts 
+       SET status = 'ACKNOWLEDGED', acknowledgedAt = ?, acknowledgedBy = ? 
+       WHERE id = ?`,
+      [Date.now(), 'staff', alertId]
+    );
+  }
+
+  await broadcastState();
+  res.json({ success: true });
+});
+
+app.post('/api/admin/sos/:id/resolve', authenticateStaff, async (req, res) => {
+  const alertId = req.params.id;
+  const { note } = req.body || {};
+  const alert = await db.get('SELECT status FROM sos_alerts WHERE id = ?', [alertId]);
+  if (!alert) return res.status(404).json({ error: 'SOS alert not found' });
+
+  if (!['RESOLVED', 'CANCELLED'].includes(alert.status)) {
+    await db.run(
+      `UPDATE sos_alerts 
+       SET status = 'RESOLVED', resolvedAt = ?, resolvedBy = ?, resolutionNote = ? 
+       WHERE id = ?`,
+      [Date.now(), 'staff', note || 'Staff marked SOS resolved', alertId]
+    );
+  }
+
   await broadcastState();
   res.json({ success: true });
 });

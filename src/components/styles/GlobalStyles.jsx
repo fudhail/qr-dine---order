@@ -19,16 +19,29 @@ export const GlobalStyles = () => (
     @keyframes pulseBadge { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
     @keyframes pulseDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } }
     @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    @keyframes slideDown { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes bounceIn { 0% { transform: scale(0.3); opacity: 0; } 50% { transform: scale(1.15); } 70% { transform: scale(0.95); } 100% { transform: scale(1); opacity: 1; } }
+    @keyframes scaleUp { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     
     .animate-fade-up { animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
     .animate-fade-in { animation: fadeIn 0.25s ease-out forwards; }
     .animate-pop { animation: popIn 0.3s ease-out forwards; }
     .animate-pulse-badge { animation: pulseBadge 0.3s ease-out; }
     .animate-pulse-dot { animation: pulseDot 1.5s infinite; }
+    .animate-slide-up { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    .animate-slide-down { animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    .animate-bounce-in { animation: bounceIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+    .animate-scale-up { animation: scaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+    
     .shimmer { background: linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite linear; }
     
-    button { cursor: pointer; border: none; background: none; outline: none; transition: all 0.2s ease; }
-    button:active { transform: scale(0.97); }
+    .card-interactive { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+    .card-interactive:hover { transform: translateY(-2px); box-shadow: 0 12px 24px rgba(15,27,43,0.06) !important; }
+    .card-interactive:active { transform: translateY(0) scale(0.97); }
+
+    button { cursor: pointer; border: none; background: none; outline: none; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+    button:active { transform: scale(0.95); }
     button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
     
     input, textarea, select { font-family: inherit; outline: none; }

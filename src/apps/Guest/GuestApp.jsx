@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   ShoppingCart, ChevronLeft, CheckCircle, MapPin, Phone,
   Search, SlidersHorizontal, Star, Clock, Utensils, HelpCircle,
@@ -112,28 +112,62 @@ const getItemMeta = (item) => {
 };
 
 const FeaturedItemCard = ({ item, meta, qty, updateQty, onCardClick }) => {
+  const isInCart = qty > 0;
+
   return (
-    <div style={{ minWidth: 220, maxWidth: 220, display: 'flex', cursor: 'pointer' }} onClick={() => onCardClick(item)}>
-      <Card style={{ padding: 0, width: '100%', height: 300, position: 'relative', overflow: 'hidden', borderRadius: 24, border: qty > 0 ? `1.5px solid ${ACCENT_BLUE}` : '1px solid rgba(0,0,0,0.03)', boxShadow: qty > 0 ? `0 12px 28px ${ACCENT_BLUE}15` : '0 8px 24px rgba(15,27,43,0.04)', background: qty > 0 ? `${ACCENT_BLUE}06` : C.white, transition: 'all 0.2s', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ height: 150, position: 'relative', background: 'linear-gradient(180deg, #FFF9ED 0%, #FFFDF9 100%)', flexShrink: 0 }}>
+    <div style={{ minWidth: 204, maxWidth: 204, display: 'flex', cursor: 'pointer' }} onClick={() => onCardClick(item)}>
+      <Card style={{ padding: 0, width: '100%', height: 244, position: 'relative', overflow: 'hidden', borderRadius: 20, border: isInCart ? `1.5px solid ${ACCENT_BLUE}` : `1px solid ${C.borderLight}`, boxShadow: isInCart ? `0 14px 28px ${ACCENT_BLUE}18` : '0 10px 24px rgba(15,27,43,0.055)', background: C.white, transition: 'all 0.2s', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ height: 112, position: 'relative', background: C.borderLight, flexShrink: 0 }}>
           {item.image ? (
             <img src={item.image} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><Utensils size={32} style={{ opacity: 0.2 }} /></div>
           )}
-          <div style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(255,255,255,0.94)', padding: '4px 8px', borderRadius: 999, display: 'flex', alignItems: 'center', gap: 3, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.08) 0%, rgba(15,23,42,0) 46%, rgba(15,23,42,0.22) 100%)' }} />
+          <div style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(15,23,42,0.74)', color: '#FFF', padding: '4px 8px', borderRadius: 999, fontSize: 10, fontWeight: 800, maxWidth: 116, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {item.category}
+          </div>
+          <div style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(255,255,255,0.96)', padding: '4px 8px', borderRadius: 999, display: 'flex', alignItems: 'center', gap: 3, boxShadow: '0 4px 12px rgba(0,0,0,0.10)' }}>
             <Star size={10} color={ACCENT_BLUE} fill={ACCENT_BLUE} />
             <span style={{ fontSize: 10, fontWeight: 800, color: C.text }}>{meta.rating}</span>
           </div>
         </div>
-        <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-          <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</h4>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: C.textSub, minHeight: 14 }}>
+        <div style={{ padding: '11px 12px 12px', display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0 }}>
+          <div style={{ minHeight: 0 }}>
+            <h4 style={{ margin: 0, fontSize: 14.5, lineHeight: 1.18, fontWeight: 850, color: C.text, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{item.name}</h4>
+            <p style={{ margin: '5px 0 0', fontSize: 11.5, color: C.textSub, lineHeight: 1.25, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical' }}>
+              {item.desc || `${meta.time} preparation`}
+            </p>
+          </div>
+          <div style={{ display: 'none' }}>
             <span>{meta.time}</span><span>·</span><span>{meta.calories}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }} onClick={e => e.stopPropagation()}>
+          <div style={{ display: 'none' }}>
+            <span>{meta.time}</span><span>•</span><span>{meta.calories}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: C.textMuted, fontWeight: 700 }}>
+            <span>{meta.time}</span>
+            <span style={{ width: 3, height: 3, borderRadius: '50%', background: C.textMuted }} />
+            <span>{meta.calories}</span>
+          </div>
+          <div style={{ display: 'none' }} onClick={e => e.stopPropagation()}>
             <span style={{ fontSize: 14, fontWeight: 800, color: C.text }}>₹{item.price}</span>
             <QuantityControl qty={qty} onAdd={() => updateQty(item, 1)} onIncrease={() => updateQty(item, 1)} onDecrease={() => updateQty(item, -1)} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }} onClick={e => e.stopPropagation()}>
+            <span style={{ fontSize: 17, fontWeight: 900, color: C.text }}>₹{item.price}</span>
+            {isInCart ? (
+              <div style={{ height: 34, display: 'flex', alignItems: 'center', gap: 10, background: `${ACCENT_BLUE}12`, borderRadius: 999, padding: '3px 5px 3px 10px' }}>
+                <button onClick={() => updateQty(item, -1)} style={{ background: 'transparent', border: 'none', color: ACCENT_BLUE, fontSize: 18, fontWeight: 900, cursor: 'pointer', width: 20, height: 26, lineHeight: 1 }}>−</button>
+                <span style={{ fontSize: 13, fontWeight: 900, color: C.text, minWidth: 12, textAlign: 'center' }}>{qty}</span>
+                <button onClick={() => updateQty(item, 1)} style={{ background: ACCENT_BLUE, border: 'none', color: '#FFF', fontSize: 16, fontWeight: 900, cursor: 'pointer', width: 26, height: 26, borderRadius: '50%', lineHeight: 1 }}>+</button>
+              </div>
+            ) : (
+              <button onClick={() => updateQty(item, 1)} style={{ height: 34, background: `${ACCENT_BLUE}12`, color: C.text, border: 'none', padding: '0 5px 0 12px', borderRadius: 999, fontWeight: 900, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                Add
+                <span style={{ width: 24, height: 24, borderRadius: '50%', background: ACCENT_BLUE, color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, lineHeight: 1 }}>+</span>
+              </button>
+            )}
           </div>
         </div>
       </Card>
@@ -145,6 +179,7 @@ const MenuItemCard = ({ item, qty, isTimingHighlight, updateQty, onCardClick }) 
   return (
     <Card
       onClick={() => onCardClick(item)}
+      className="card-interactive"
       style={{ 
         padding: 0, 
         display: 'flex', 
@@ -191,6 +226,7 @@ const MenuItemCard = ({ item, qty, isTimingHighlight, updateQty, onCardClick }) 
 export const GuestApp = () => {
   const menuItems = useStore(state => state.menuItems);
   const orders = useStore(state => state.orders);
+  const sosAlerts = useStore(state => state.sosAlerts);
   const socketConnected = useStore(state => state.socketConnected);
   const billingConfig = useStore(state => state.config);
 
@@ -298,23 +334,17 @@ export const GuestApp = () => {
       setCurrentScreen('tracking');
     };
 
-    const handleSosAccepted = () => {
-      showToast('SOS ALARM TRIGGERED! Staff are responding.');
-    };
-
     const handleOutOfStock = (data) => {
       setOutOfStockAlert(data);
     };
 
     socket.on('order_rejected', handleRejected);
     socket.on('order_accepted', handleAccepted);
-    socket.on('sos_accepted', handleSosAccepted);
     socket.on('item_out_of_stock_alert', handleOutOfStock);
 
     return () => {
       socket.off('order_rejected', handleRejected);
       socket.off('order_accepted', handleAccepted);
-      socket.off('sos_accepted', handleSosAccepted);
       socket.off('item_out_of_stock_alert', handleOutOfStock);
     };
   }, []);
@@ -380,14 +410,78 @@ export const GuestApp = () => {
   const sgst = (cartSubtotal + serviceCharge) * (sgstRate / 100);
   const grandTotal = cartSubtotal + cgst + sgst + serviceCharge;
 
-  // Recommended add-ons
-  const getAiRecommendations = () => {
-    // Return items that complement what's in cart, or simple popular foods
+  const recommendedItems = useMemo(() => {
     const inCartIds = new Set(cart.map(c => c.id));
+    const cartCategories = new Set(cart.map(c => c.category).filter(Boolean));
+    const cartIsVeg = cart.length > 0 && cart.every(item => Number(item.isVeg) === 1);
+    const averageCartPrice = cartTotalQty > 0 ? cartSubtotal / cartTotalQty : 0;
+    const popularityById = new Map();
+    const popularityByName = new Map();
+
+    orders
+      .filter(order => order.type === 'FOOD' && order.status !== 'CANCELLED')
+      .forEach(order => {
+        (order.items || []).forEach(item => {
+          const qty = Number(item.qty) || 1;
+          if (item.id) {
+            popularityById.set(String(item.id), (popularityById.get(String(item.id)) || 0) + qty);
+          }
+          if (item.name) {
+            const nameKey = item.name.toLowerCase();
+            popularityByName.set(nameKey, (popularityByName.get(nameKey) || 0) + qty);
+          }
+        });
+      });
+
+    const pairings = {
+      Breakfast: ['Beverages', 'Desserts'],
+      Starters: ['Mains', 'Beverages'],
+      Mains: ['Desserts', 'Beverages', 'Starters'],
+      Desserts: ['Beverages'],
+      Beverages: ['Breakfast', 'Starters', 'Desserts'],
+      Custom: ['Mains', 'Beverages']
+    };
+
+    const preferredCategories = new Set();
+    if (cart.length === 0) {
+      preferredCategories.add(mealConfig.defaultCategory);
+      if (activeCategory !== 'All') preferredCategories.add(activeCategory);
+    } else {
+      cartCategories.forEach(category => {
+        (pairings[category] || []).forEach(pairCategory => preferredCategories.add(pairCategory));
+      });
+    }
+
     return menuItems
-      .filter(item => item.available && item.category !== 'Services' && !inCartIds.has(item.id))
+      .filter(item => item.available && item.category !== 'Services' && !inCartIds.has(item.id) && (!vegOnly || Number(item.isVeg) === 1))
+      .map(item => {
+        const itemId = String(item.id);
+        const itemName = item.name.toLowerCase();
+        const popularityScore = popularityById.get(itemId) || popularityByName.get(itemName) || 0;
+        let score = 0;
+
+        if (preferredCategories.has(item.category)) score += cart.length > 0 ? 18 : 12;
+        if (item.category === mealConfig.defaultCategory) score += 8;
+        if (activeCategory !== 'All' && item.category === activeCategory) score += 5;
+        if (cartIsVeg && Number(item.isVeg) === 1) score += 6;
+        score += Math.min(popularityScore * 2, 16);
+
+        if (averageCartPrice > 0) {
+          const priceGap = Math.abs(Number(item.price || 0) - averageCartPrice);
+          if (priceGap <= 150) score += 6;
+          else if (priceGap <= 300) score += 3;
+        }
+
+        if (cartCategories.has('Mains') && ['Desserts', 'Beverages'].includes(item.category)) score += 8;
+        if (cartCategories.has('Breakfast') && item.category === 'Beverages') score += 8;
+        if (cart.length === 0 && item.available) score += 1;
+
+        return { item, score };
+      })
+      .sort((a, b) => b.score - a.score || Number(a.item.price || 0) - Number(b.item.price || 0) || String(a.item.name).localeCompare(String(b.item.name)))
+      .map(result => result.item)
       .slice(0, 4);
-  };
+  }, [activeCategory, cart, cartSubtotal, cartTotalQty, mealConfig.defaultCategory, menuItems, orders, vegOnly]);
 
   const addCustomItemToCart = () => {
     if (!customItemName.trim()) return;
@@ -409,7 +503,6 @@ export const GuestApp = () => {
 
   const placeOrder = (customPayload = null) => {
     const isService = customPayload && customPayload.type === 'SERVICE';
-    const isEmergency = customPayload && customPayload.type === 'EMERGENCY';
 
     const orderPayload = isService ? {
       room: roomNumber,
@@ -422,19 +515,6 @@ export const GuestApp = () => {
         status: 'PENDING'
       }],
       note: customPayload.note || '',
-      subtotal: 0,
-      total: 0
-    } : isEmergency ? {
-      room: roomNumber,
-      type: 'EMERGENCY',
-      deliveryPreference: 'AS_READY',
-      items: [{
-        name: 'SOS Emergency assistance alarm',
-        qty: 1,
-        price: 0,
-        status: 'PENDING'
-      }],
-      note: 'Emergency panic button triggered!',
       subtotal: 0,
       total: 0
     } : {
@@ -477,6 +557,44 @@ export const GuestApp = () => {
       }
     } catch {
       showToast('Error sending cancellation request.');
+    }
+  };
+
+  const triggerSosAlert = async () => {
+    try {
+      const res = await fetch('/api/guest/sos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.existing ? 'SOS is already active. Staff are responding.' : 'SOS alarm triggered. Staff are responding.');
+        setCurrentScreen('sos');
+      } else {
+        showToast(data.error || 'Could not trigger SOS alert.');
+      }
+    } catch {
+      showToast('Error triggering SOS alert.');
+    }
+  };
+
+  const clearSosAlert = async (alertId) => {
+    try {
+      const res = await fetch(`/api/guest/sos/${alertId}/safe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('SOS cleared. Staff have been notified you are safe.');
+        setCurrentScreen('sos');
+      } else {
+        showToast(data.error || 'Could not clear SOS alert.');
+      }
+    } catch {
+      showToast('Error clearing SOS alert.');
     }
   };
 
@@ -559,8 +677,8 @@ export const GuestApp = () => {
           boxShadow: '0 12px 36px rgba(0,0,0,0.2)', zIndex: 99999,
           display: 'flex', alignItems: 'center', gap: 10,
           fontSize: 13, fontWeight: 750, width: 'calc(100% - 48px)', maxWidth: 380,
-          boxSizing: 'border-box', animation: 'fadeIn 0.2s ease-out'
-        }}>
+          boxSizing: 'border-box',
+        }} className="animate-slide-down">
           <CheckCircle size={16} color={ACCENT_BLUE} />
           <span>{toast}</span>
         </div>
@@ -700,7 +818,7 @@ export const GuestApp = () => {
 
       {/* DINING SCREEN */}
       {currentScreen === 'menu' && (
-        <div>
+        <div className="animate-fade-up">
           {/* Sticky Header */}
           <div className="guest-header" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(14px)', padding: '18px 20px', borderBottom: `1px solid ${C.borderLight}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
@@ -777,12 +895,17 @@ export const GuestApp = () => {
                 <span style={{ color: ACCENT_BLUE, fontSize: 11, fontWeight: 700 }}>Recommended</span>
               </div>
               <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 6 }} className="hide-scrollbar">
-                {getAiRecommendations().map((item, idx) => {
+                {recommendedItems.length === 0 ? (
+                  <Card style={{ minWidth: '100%', padding: 18, borderRadius: 18, textAlign: 'center', border: `1px dashed ${C.border}`, color: C.textSub }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>No recommendations right now</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>Add a dish or clear filters to see suggestions.</div>
+                  </Card>
+                ) : recommendedItems.map((item) => {
                   const meta = getItemMeta(item);
                   const qty = getQty(item.id);
                   return (
                     <FeaturedItemCard 
-                      key={idx} 
+                      key={item.id} 
                       item={item} 
                       meta={meta} 
                       qty={qty} 
@@ -830,26 +953,23 @@ export const GuestApp = () => {
                     </div>
                   ))
                 ) : displayedItems.length === 0 ? (
-                  <Card style={{ padding: 22, borderRadius: 20, textAlign: 'center', border: `1px dashed ${C.border}`, background: C.white }}>
-                    <Utensils size={28} color={C.textMuted} style={{ margin: '0 auto 10px auto' }} />
-                    <h3 style={{ margin: '0 0 6px 0', fontSize: 15, fontWeight: 800, color: C.text }}>No dishes found</h3>
-                    <p style={{ margin: '0 auto 14px auto', fontSize: 12, lineHeight: 1.5, color: C.textSub, maxWidth: 300 }}>
-                      Nothing is available for this search or category right now.
-                    </p>
-                    <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Card style={{ padding: 20, border: `1.5px dashed ${ACCENT_BLUE}40`, background: `${ACCENT_BLUE}04`, borderRadius: 20, textAlign: 'center' }}>
+                    <div style={{ fontWeight: 800, fontSize: 15, color: ACCENT_BLUE }}>No items for this category</div>
+                    <div style={{ fontSize: 13, color: C.textSub, marginTop: 6 }}>View the full menu or make an off-menu custom food request.</div>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap', marginTop: 14 }}>
                       <button
                         onClick={() => {
+                          setActiveCategory('All');
                           setSearchQuery('');
                           setVegOnly(false);
-                          setActiveCategory('All');
                         }}
                         style={{ background: ACCENT_BLUE, color: '#FFF', border: 'none', padding: '9px 14px', borderRadius: 12, fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
                       >
-                        Show All Dishes
+                        Go to All Menu
                       </button>
                       <button
                         onClick={() => setShowCustomModal(true)}
-                        style={{ background: C.borderLight, color: C.text, border: 'none', padding: '9px 14px', borderRadius: 12, fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+                        style={{ background: C.white, color: ACCENT_BLUE, border: `1px solid ${ACCENT_BLUE}30`, padding: '9px 14px', borderRadius: 12, fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
                       >
                         Custom Request
                       </button>
@@ -873,7 +993,7 @@ export const GuestApp = () => {
 
       {/* HOSPITALITY SERVICES SCREEN */}
       {currentScreen === 'services' && (
-        <div style={{ padding: 20 }} className="animate-fade-in">
+        <div style={{ padding: 20 }} className="animate-fade-up">
           <h2 style={{ fontSize: 20, fontWeight: 800, margin: '0 0 6px 0' }}>Hospitality Services</h2>
           <p style={{ fontSize: 13, color: C.textSub, margin: '0 0 20px 0' }}>Directly request hotel amenities and services in one tap.</p>
 
@@ -915,7 +1035,7 @@ export const GuestApp = () => {
 
       {/* SOS EMERGENCY PANIC SCREEN */}
       {currentScreen === 'sos' && (() => {
-        const activeSOSOrder = orders.find(o => o.type === 'EMERGENCY' && o.status !== 'DELIVERED');
+        const activeSOSAlert = sosAlerts.find(alert => !['RESOLVED', 'CANCELLED'].includes(alert.status));
         
         const triggerSOS = () => {
           setSosCountdown(3);
@@ -926,7 +1046,7 @@ export const GuestApp = () => {
             if (timeLeft <= 0) {
               clearInterval(sosTimerRef.current);
               setSosCountdown(0);
-              placeOrder({ type: 'EMERGENCY' });
+              triggerSosAlert();
             }
           }, 1000);
         };
@@ -940,8 +1060,8 @@ export const GuestApp = () => {
         };
 
         return (
-          <div style={{ padding: 24, textAlign: 'center' }} className="animate-fade-in">
-            {activeSOSOrder ? (
+          <div style={{ padding: 24, textAlign: 'center' }} className="animate-fade-up">
+            {activeSOSAlert ? (
               // Alert Sent & Active state
               <div style={{ animation: 'pulseSOS 2s infinite' }}>
                 <style>{`
@@ -956,14 +1076,12 @@ export const GuestApp = () => {
                 </div>
                 <h2 style={{ fontSize: 26, fontWeight: 900, color: '#DC2626', margin: '0 0 12px 0', letterSpacing: -0.5 }}>SOS ALERT ACTIVE</h2>
                 <p style={{ fontSize: 14, color: C.textSub, lineHeight: 1.6, margin: '0 auto 30px auto', maxWidth: 360, fontWeight: 600 }}>
-                  🚨 Help is on the way to Room {roomNumber}. Hotel management and security have been notified.
+                  Help is on the way to Room {roomNumber}. Hotel management and security have been notified.
+                  {activeSOSAlert.status === 'ACKNOWLEDGED' ? ' Staff have acknowledged the alert.' : ''}
                 </p>
                 
                 <button 
-                  onClick={() => {
-                    cancelActiveOrder(activeSOSOrder.id);
-                    showToast('Emergency alert dismissed.');
-                  }}
+                  onClick={() => clearSosAlert(activeSOSAlert.id)}
                   style={{ width: '100%', maxWidth: 280, padding: '16px 24px', borderRadius: 16, background: C.text, color: '#FFF', fontSize: 15, fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 20px rgba(0,0,0,0.1)' }}
                 >
                   I am Safe / Dismiss Alert
@@ -1016,7 +1134,7 @@ export const GuestApp = () => {
 
       {/* CART SCREEN */}
       {currentScreen === 'cart' && (
-        <div className="animate-fade-in" style={{ padding: 20 }}>
+        <div className="animate-fade-up" style={{ padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20 }}>
             <button onClick={() => setCurrentScreen('menu')} style={{ border: 'none', padding: 6, background: C.white, borderRadius: '50%', boxShadow: '0 2px 6px rgba(0,0,0,0.05)', cursor: 'pointer' }}>
               <ChevronLeft size={18} />
@@ -1098,7 +1216,7 @@ export const GuestApp = () => {
 
       {/* TRACKING SCREEN */}
       {currentScreen === 'tracking' && (
-        <div className="animate-fade-in" style={{ padding: 20 }}>
+        <div className="animate-fade-up" style={{ padding: 20 }}>
           {trackingOrder ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <Card style={{ padding: 16, borderRadius: 24, background: '#FFF', border: `1px solid ${C.border}` }}>
@@ -1160,28 +1278,30 @@ export const GuestApp = () => {
       )}
 
       {/* Bottom Navigation Tabs */}
-      <div className="guest-bottom-nav" style={{ position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 32px)', maxWidth: 448, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(16px)', borderRadius: 24, padding: '8px 10px', boxShadow: '0 12px 30px rgba(0,0,0,0.08)', display: 'flex', justifyContent: 'space-around', alignItems: 'center', zIndex: 999, border: `1px solid ${C.borderLight}` }}>
-        {[
-          { id: 'menu', icon: Utensils, label: 'Dining' },
-          { id: 'services', icon: ChefHat, label: 'Services' },
-          { id: 'sos', icon: AlertOctagon, label: 'SOS', color: ACCENT_RED },
-          { id: 'tracking', icon: Clock, label: 'Track' }
-        ].map(tab => {
-          const isActive = currentScreen === tab.id;
-          const Icon = tab.icon;
-          const color = tab.color || (isActive ? ACCENT_BLUE : C.textSub);
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setCurrentScreen(tab.id)}
-              style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '6px 10px', borderRadius: 14, cursor: 'pointer', color: color, minWidth: 70 }}
-            >
-              <Icon size={18} fill={isActive && tab.id === 'sos' ? ACCENT_RED : 'none'} />
-              <span style={{ fontSize: 10, fontWeight: 800 }}>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      {currentScreen !== 'cart' && (
+        <div className="guest-bottom-nav" style={{ position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 32px)', maxWidth: 448, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(16px)', borderRadius: 24, padding: '8px 10px', boxShadow: '0 12px 30px rgba(0,0,0,0.08)', display: 'flex', justifyContent: 'space-around', alignItems: 'center', zIndex: 999, border: `1px solid ${C.borderLight}` }}>
+          {[
+            { id: 'menu', icon: Utensils, label: 'Dining' },
+            { id: 'services', icon: ChefHat, label: 'Services' },
+            { id: 'sos', icon: AlertOctagon, label: 'SOS', color: ACCENT_RED },
+            { id: 'tracking', icon: Clock, label: 'Track' }
+          ].map(tab => {
+            const isActive = currentScreen === tab.id;
+            const Icon = tab.icon;
+            const color = tab.color || (isActive ? ACCENT_BLUE : C.textSub);
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setCurrentScreen(tab.id)}
+                style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '6px 10px', borderRadius: 14, cursor: 'pointer', color: color, minWidth: 70 }}
+              >
+                <Icon size={18} fill={isActive && tab.id === 'sos' ? ACCENT_RED : 'none'} />
+                <span style={{ fontSize: 10, fontWeight: 800 }}>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {selectedItem && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,27,43,0.4)', backdropFilter: 'blur(8px)', zIndex: 1100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setSelectedItem(null)}>

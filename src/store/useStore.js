@@ -26,6 +26,7 @@ export const useStore = create((set, get) => ({
   roomBills: [],
   feedback: [],
   stations: [],
+  sosAlerts: [],
   config: { cgst: 2.5, sgst: 2.5, serviceCharge: 10, adminPin: '', kitchenPin: '' },
   adminAuth: sessionStorage.getItem('adminAuth') === 'true',
   kitchenAuth: sessionStorage.getItem('kitchenAuth') === 'true',
@@ -127,7 +128,8 @@ export const useStore = create((set, get) => ({
         roomBills: data.roomBills || state.roomBills,
         config: data.config || state.config,
         feedback: data.feedback || state.feedback,
-        stations: data.stations || state.stations
+        stations: data.stations || state.stations,
+        sosAlerts: data.sosAlerts || state.sosAlerts
       }));
     };
     

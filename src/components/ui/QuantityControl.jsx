@@ -18,7 +18,7 @@ export const QuantityControl = ({ qty, onIncrease, onDecrease, onAdd }) => {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: ACCENT_SOFT, borderRadius: 24, padding: '4px 4px 4px 14px' }}>
       <button onClick={onDecrease} style={{ background: 'none', border: 'none', color: C.text, fontWeight: 900, fontSize: 16, cursor: 'pointer', padding: '4px 8px 4px 0' }}>−</button>
-      <span style={{ fontWeight: 800, color: C.text, fontSize: 15, minWidth: 14, textAlign: 'center' }}>{qty}</span>
+      <span key={qty} className="animate-pop" style={{ fontWeight: 800, color: C.text, fontSize: 15, minWidth: 14, textAlign: 'center', display: 'inline-block' }}>{qty}</span>
       <button onClick={onIncrease} style={{ background: ACCENT, color: C.white, border: 'none', width: 28, height: 28, borderRadius: '50%', fontWeight: 900, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
     </div>
   );

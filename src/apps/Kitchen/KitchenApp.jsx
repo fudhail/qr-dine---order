@@ -13,6 +13,7 @@ const ACCENT_BLUE = '#2563EB';
 
 export const KitchenApp = () => {
   const orders = useStore(state => state.orders);
+  const sosAlerts = useStore(state => state.sosAlerts);
   const kitchenAuth = useStore(state => state.kitchenAuth);
   const login = useStore(state => state.login);
   const logout = useStore(state => state.logout);
@@ -27,12 +28,12 @@ export const KitchenApp = () => {
   const [menuSearch, setMenuSearch] = useState('');
 
   const activeSOS = useMemo(() => {
-    return orders.find(o => o.type === 'EMERGENCY' && o.status !== 'DELIVERED') || null;
-  }, [orders]);
+    return sosAlerts.find(alert => !['RESOLVED', 'CANCELLED'].includes(alert.status)) || null;
+  }, [sosAlerts]);
   const sosAudioRef = useRef(null);
 
   useEffect(() => {
-    if (activeSOS) {
+    if (activeSOS?.status === 'OPEN') {
       try {
         if (!sosAudioRef.current) {
           sosAudioRef.current = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg');
@@ -42,11 +43,9 @@ export const KitchenApp = () => {
       } catch (err) {
         console.debug('SOS audio could not start automatically:', err);
       }
-    } else {
-      if (sosAudioRef.current) {
-        sosAudioRef.current.pause();
-        sosAudioRef.current.currentTime = 0;
-      }
+    } else if (sosAudioRef.current) {
+      sosAudioRef.current.pause();
+      sosAudioRef.current.currentTime = 0;
     }
   }, [activeSOS]);
 
@@ -104,8 +103,30 @@ export const KitchenApp = () => {
     }
   };
 
-  const clearSOS = async (orderId) => {
-    await updateStatus(orderId, 'DELIVERED');
+  const acknowledgeSOS = async (alertId) => {
+    try {
+      await fetch(`/api/admin/sos/${alertId}/acknowledge`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${sessionStorage.getItem('kitchenToken')}` }
+      });
+    } catch (err) {
+      console.error('Failed to acknowledge SOS:', err);
+    }
+  };
+
+  const clearSOS = async (alertId) => {
+    try {
+      await fetch(`/api/admin/sos/${alertId}/resolve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('kitchenToken')}`
+        },
+        body: JSON.stringify({ note: 'Kitchen marked SOS resolved' })
+      });
+    } catch (err) {
+      console.error('Failed to resolve SOS:', err);
+    }
     if (sosAudioRef.current) {
       sosAudioRef.current.pause();
     }
@@ -133,6 +154,15 @@ export const KitchenApp = () => {
     return orders.filter(o => groupedStatuses.includes(o.status) && o.type === 'SERVICE');
   }, [orders, activeTab]);
 
+  const filteredMenuItems = useMemo(() => {
+    return menuItems.filter(item => {
+      const query = menuSearch.toLowerCase();
+      const matchesSearch = item.name.toLowerCase().includes(query) || (item.desc && item.desc.toLowerCase().includes(query));
+      const matchesCategory = activeMenuCategory === 'All' || item.category === activeMenuCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [menuItems, menuSearch, activeMenuCategory]);
+
   if (!kitchenAuth) {
     return <PinGate role="kitchen" onLogin={login} />;
   }
@@ -159,12 +189,25 @@ export const KitchenApp = () => {
           <ShieldAlert size={80} style={{ marginBottom: 20 }} />
           <h1 style={{ fontSize: 48, fontWeight: 900, margin: 0, letterSpacing: -1 }}>EMERGENCY SOS ALERT!</h1>
           <h2 style={{ fontSize: 32, fontWeight: 800, marginTop: 10 }}>ROOM {activeSOS.room} IS REQUESTING URGENT ASSISTANCE</h2>
-          <button 
-            onClick={() => clearSOS(activeSOS.id)}
-            style={{ marginTop: 30, background: '#FFF', color: '#DC2626', border: 'none', padding: '16px 36px', borderRadius: 16, fontSize: 18, fontWeight: 800, cursor: 'pointer', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}
-          >
-            DISMISS / ALARM CLEARED
-          </button>
+          <div style={{ marginTop: 12, fontSize: 16, fontWeight: 800, background: 'rgba(255,255,255,0.16)', padding: '8px 14px', borderRadius: 999 }}>
+            {activeSOS.status === 'ACKNOWLEDGED' ? 'Acknowledged by staff' : 'New emergency alert'}
+          </div>
+          <div style={{ display: 'flex', gap: 14, marginTop: 30, flexWrap: 'wrap', justifyContent: 'center' }}>
+            {activeSOS.status === 'OPEN' && (
+              <button
+                onClick={() => acknowledgeSOS(activeSOS.id)}
+                style={{ background: '#111827', color: '#FFF', border: 'none', padding: '16px 28px', borderRadius: 16, fontSize: 16, fontWeight: 800, cursor: 'pointer', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}
+              >
+                Acknowledge
+              </button>
+            )}
+            <button 
+              onClick={() => clearSOS(activeSOS.id)}
+              style={{ background: '#FFF', color: '#DC2626', border: 'none', padding: '16px 28px', borderRadius: 16, fontSize: 16, fontWeight: 800, cursor: 'pointer', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}
+            >
+              Mark Resolved
+            </button>
+          </div>
         </div>
       )}
 
@@ -257,7 +300,7 @@ export const KitchenApp = () => {
               {tabs.find(t => t.id === activeTab)?.label}
             </h1>
             <p style={{ margin: '4px 0 0', color: C.textSub, fontSize: 14 }}>
-              {activeTab === 'MENU' ? `${menuItems.length} stock controls` : `${filteredOrders.length + activeServiceRequests.length} requests in this queue`}
+              {activeTab === 'MENU' ? `${filteredMenuItems.length} of ${menuItems.length} stock controls` : `${filteredOrders.length + activeServiceRequests.length} requests in this queue`}
             </p>
           </div>
           
@@ -334,13 +377,21 @@ export const KitchenApp = () => {
 
             {/* ITEMS GRID */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 24 }}>
-              {menuItems
-                .filter(item => {
-                  const matchesSearch = item.name.toLowerCase().includes(menuSearch.toLowerCase()) || (item.desc && item.desc.toLowerCase().includes(menuSearch.toLowerCase()));
-                  const matchesCategory = activeMenuCategory === 'All' || item.category === activeMenuCategory;
-                  return matchesSearch && matchesCategory;
-                })
-                .map(item => (
+              {filteredMenuItems.length === 0 ? (
+                <div style={{ gridColumn: '1 / -1', background: C.white, borderRadius: 16, padding: 36, textAlign: 'center', color: C.textMuted, border: `1px dashed ${C.border}` }}>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: C.text, marginBottom: 6 }}>No stock items found</div>
+                  <div style={{ fontSize: 13, marginBottom: 16 }}>Try another category or clear the search.</div>
+                  <button
+                    onClick={() => {
+                      setMenuSearch('');
+                      setActiveMenuCategory('All');
+                    }}
+                    style={{ background: ACCENT_BLUE, color: '#FFF', border: 'none', padding: '10px 16px', borderRadius: 10, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}
+                  >
+                    Show All Stock
+                  </button>
+                </div>
+              ) : filteredMenuItems.map(item => (
                   <div key={item.id} style={{ padding: 20, background: C.white, borderRadius: 16, border: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                       <div>

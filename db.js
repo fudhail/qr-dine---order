@@ -192,6 +192,22 @@ export const initDB = async () => {
       createdAt INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS sos_alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      room TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('OPEN', 'ACKNOWLEDGED', 'RESOLVED', 'CANCELLED')) DEFAULT 'OPEN',
+      severity TEXT NOT NULL DEFAULT 'EMERGENCY',
+      source TEXT NOT NULL DEFAULT 'GUEST_QR',
+      message TEXT,
+      createdAt INTEGER NOT NULL,
+      acknowledgedAt INTEGER,
+      acknowledgedBy TEXT,
+      resolvedAt INTEGER,
+      resolvedBy TEXT,
+      resolutionNote TEXT,
+      legacy_order_id INTEGER UNIQUE
+    );
+
     CREATE TABLE IF NOT EXISTS config (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       adminPin TEXT NOT NULL,
@@ -313,6 +329,30 @@ export const initDB = async () => {
     }
   }
 
+  const legacySosOrders = await db.all("SELECT id, room, status, createdAt, note FROM orders WHERE type = 'EMERGENCY'");
+  for (const alert of legacySosOrders) {
+    const status = alert.status === 'CANCELLED'
+      ? 'CANCELLED'
+      : alert.status === 'DELIVERED'
+        ? 'RESOLVED'
+        : 'OPEN';
+    await db.run(
+      `INSERT OR IGNORE INTO sos_alerts 
+       (room, status, severity, source, message, createdAt, resolvedAt, resolvedBy, resolutionNote, legacy_order_id)
+       VALUES (?, ?, 'EMERGENCY', 'LEGACY_ORDER', ?, ?, ?, ?, ?, ?)`,
+      [
+        alert.room,
+        status,
+        alert.note || 'Legacy SOS alert migrated from order history',
+        alert.createdAt,
+        status === 'RESOLVED' || status === 'CANCELLED' ? Date.now() : null,
+        status === 'RESOLVED' ? 'legacy' : null,
+        status === 'CANCELLED' ? 'Legacy SOS was cancelled' : null,
+        alert.id
+      ]
+    );
+  }
+
   return db;
 };
 
@@ -320,6 +360,7 @@ export const getFullState = async (db) => {
   const menuRows = await db.all('SELECT * FROM menu_items');
   const billsRows = await db.all('SELECT * FROM room_bills');
   const ordersRows = await db.all('SELECT * FROM orders ORDER BY createdAt DESC');
+  const sosRows = await db.all('SELECT * FROM sos_alerts ORDER BY createdAt DESC');
   const configRows = await db.all('SELECT * FROM config');
   
   // Fetch details about active KOTs for orders
@@ -356,6 +397,7 @@ export const getFullState = async (db) => {
         kots: orderKots.map(k => ({ ...k, items: JSON.parse(k.items) }))
       };
     }),
+    sosAlerts: sosRows,
     feedback,
     stations,
     config: configRows[0]
