@@ -1,9 +1,9 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   LayoutDashboard, UtensilsCrossed, Printer, X, Plus, ClipboardList, 
-  TrendingUp, Package, Star, Clock, Trash2, CheckCircle2, ChevronRight, 
-  AlertCircle, DollarSign, Edit3, BarChart2, Coffee, ShieldCheck, ArrowRight,
-  User, Check, ShieldAlert, Award, Search, Wrench
+  TrendingUp, Package, Star, Clock, Trash2, 
+  AlertCircle, DollarSign, Edit3, ShieldCheck, ArrowRight,
+  Award, Search, Wrench
 } from 'lucide-react';
 import { C } from '../../constants/theme';
 import { Card } from '../../components/ui/Card';
@@ -26,7 +26,6 @@ import { useStore } from '../../store/useStore';
 
 export const AdminApp = ({ config = CONFIG }) => {
   const orders = useStore(state => state.orders);
-  const setOrders = useStore(state => state.setOrders);
   const menuItems = useStore(state => state.menuItems);
   const setMenuItems = useStore(state => state.setMenuItems);
   const roomBills = useStore(state => state.roomBills);
@@ -38,6 +37,7 @@ export const AdminApp = ({ config = CONFIG }) => {
   const configObj = useStore(state => state.config);
   const setConfig = useStore(state => state.setConfig);
   const feedback = useStore(state => state.feedback) || [];
+  const stations = useStore(state => state.stations);
 
   const [activeSection, setActiveSection] = useState('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
@@ -55,9 +55,20 @@ export const AdminApp = ({ config = CONFIG }) => {
     desc: '', 
     price: '', 
     category: 'Mains', 
+    station_id: 'indian',
     isVeg: true, 
     image: IMAGE_PRESETS[0].url 
   });
+
+  const stationOptions = useMemo(() => {
+    return stations.length > 0 ? stations : [
+      { id: 'indian', name: 'Indian Kitchen' },
+      { id: 'continental', name: 'Continental Kitchen' },
+      { id: 'bar', name: 'Beverage Station' },
+      { id: 'housekeeping', name: 'Housekeeping Services' },
+      { id: 'laundry', name: 'Laundry Services' }
+    ];
+  }, [stations]);
 
   // Inject font assets inside useEffect
   useEffect(() => {
@@ -85,7 +96,7 @@ export const AdminApp = ({ config = CONFIG }) => {
   const isHotel = true;
   const locationLabel = 'Room';
 
-  const calculateBillTotals = (bill) => {
+  const calculateBillTotals = useCallback((bill) => {
     if (!bill) return { roomTotal: 0, serviceTotal: 0, roomTax: 0, serviceTax: 0, grandTotal: 0 };
     const roomTotal = bill.roomCharge || 0;
     const roomTax = roomTotal * 0.12;
@@ -106,11 +117,11 @@ export const AdminApp = ({ config = CONFIG }) => {
       serviceTax,
       grandTotal: roomTotal + roomTax + serviceTotalInclusive
     };
-  };
+  }, [configObj?.cgst, configObj?.sgst, configObj?.serviceCharge]);
 
   const activeTotals = useMemo(() => {
     return calculateBillTotals(activeBill);
-  }, [activeBill]);
+  }, [activeBill, calculateBillTotals]);
 
   // Get orders that are delivered but not attached to the current room bill yet
   const unbilledDeliveredOrders = useMemo(() => {
@@ -130,6 +141,7 @@ export const AdminApp = ({ config = CONFIG }) => {
       ...newItem,
       id: Date.now(),
       price: Number(newItem.price),
+      station_id: newItem.station_id || stationOptions[0]?.id || 'indian',
       available: true
     };
     setMenuItems([createdItem, ...menuItems]);
@@ -139,6 +151,7 @@ export const AdminApp = ({ config = CONFIG }) => {
       desc: '',
       price: '',
       category: 'Mains',
+      station_id: stationOptions[0]?.id || 'indian',
       isVeg: true,
       image: IMAGE_PRESETS[0].url
     });
@@ -174,14 +187,33 @@ export const AdminApp = ({ config = CONFIG }) => {
   };
 
   // Toggle item availability
-  const toggleItemAvailability = (itemId) => {
-    setMenuItems(menuItems.map(item => 
-      item.id === itemId ? { ...item, available: !item.available } : item
-    ));
+  const toggleItemAvailability = async (itemId) => {
+    const item = menuItems.find(menuItem => menuItem.id === itemId);
+    if (!item) return;
+
+    try {
+      const response = await fetch('/api/admin/menu_items/out-of-stock', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('adminToken')}`
+        },
+        body: JSON.stringify({ itemId, available: !item.available })
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        alert(data.error || 'Could not update stock status.');
+      }
+    } catch {
+      alert('Network error while updating stock status.');
+    }
   };
 
   // Delete menu item
   const handleDeleteItem = (itemId) => {
+    const item = menuItems.find(menuItem => menuItem.id === itemId);
+    const confirmed = window.confirm(`Delete ${item?.name || 'this menu item'}? This removes it from the guest menu.`);
+    if (!confirmed) return;
     setMenuItems(menuItems.filter(item => item.id !== itemId));
   };
 
@@ -215,13 +247,50 @@ export const AdminApp = ({ config = CONFIG }) => {
   };
 
   // Update specific order status in the active pipeline
-  const updateOrderStatus = (orderId, newStatus) => {
-    setOrders(orders.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+  const updateOrderStatus = async (orderId, newStatus) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+
+    const updatedItems = (order.items || []).map(item => (
+      newStatus === 'ON_THE_WAY' || newStatus === 'DELIVERED'
+        ? { ...item, status: 'DISPATCHED' }
+        : item
+    ));
+
+    try {
+      const response = await fetch('/api/admin/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('adminToken')}`
+        },
+        body: JSON.stringify([{ id: orderId, status: newStatus, items: updatedItems }])
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        alert(data.error || 'Could not update order status.');
+      }
+    } catch {
+      alert('Network error while updating order status.');
+    }
   };
 
   // Cancel/Refund order
-  const cancelOrder = (orderId) => {
-    setOrders(orders.map(o => o.id === orderId ? { ...o, status: 'CANCELLED' } : o));
+  const cancelOrder = async (orderId) => {
+    try {
+      const response = await fetch(`/api/admin/orders/${orderId}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${sessionStorage.getItem('adminToken')}`
+        }
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        alert(data.error || 'Only new orders can be cancelled.');
+      }
+    } catch {
+      alert('Network error while cancelling order.');
+    }
   };
 
   // Analytics derivations
@@ -445,8 +514,6 @@ export const AdminApp = ({ config = CONFIG }) => {
                   {roomBills.map(bill => {
                     const roomOrders = orders.filter(o => o.room === bill.room);
                     const pendingOrders = roomOrders.filter(o => o.status === 'NEW' || o.status === 'PREPARING');
-                    const hasCheckoutAction = false; // Placeholder logic if checkout requests were flag based.
-                    
                     return (
                       <div 
                         key={bill.room}
@@ -1140,7 +1207,7 @@ export const AdminApp = ({ config = CONFIG }) => {
                       <p style={{ fontSize: 12.5, color: C.textSub, margin: '6px 0 0 0', lineHeight: 1.45 }}>{item.desc}</p>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginTop: 'auto' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, marginTop: 'auto' }}>
                       <div style={{ padding: '10px 12px', borderRadius: 14, background: C.borderLight }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase' }}>Item Type</div>
                         <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginTop: 4 }}>{item.isVeg ? 'Veg' : 'Non-Veg'}</div>
@@ -1148,6 +1215,12 @@ export const AdminApp = ({ config = CONFIG }) => {
                       <div style={{ padding: '10px 12px', borderRadius: 14, background: C.borderLight }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase' }}>Pricing</div>
                         <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginTop: 4 }}>₹{item.price}</div>
+                      </div>
+                      <div style={{ padding: '10px 12px', borderRadius: 14, background: C.borderLight }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase' }}>Station</div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {stationOptions.find(station => station.id === item.station_id)?.name || item.station_id || 'Indian Kitchen'}
+                        </div>
                       </div>
                     </div>
 
@@ -1720,6 +1793,15 @@ export const AdminApp = ({ config = CONFIG }) => {
                     {['Breakfast', 'Starters', 'Mains', 'Desserts', 'Beverages'].map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Kitchen / Service Station</label>
+                <select value={newItem.station_id} onChange={e => setNewItem({...newItem, station_id: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 12, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.white }}>
+                  {stationOptions.map(station => (
+                    <option key={station.id} value={station.id}>{station.name}</option>
+                  ))}
+                </select>
               </div>
 
               <div>

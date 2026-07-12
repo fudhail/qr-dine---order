@@ -1,8 +1,8 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { 
-  ChefHat, CheckCircle, Circle, MapPin, AlertTriangle, Search, 
-  Clock, Printer, LayoutDashboard, LogOut, FileText, CheckSquare, 
-  XCircle, ToggleLeft, ToggleRight, ShieldAlert, Award
+  ChefHat, Circle, MapPin, AlertTriangle, Search, 
+  Printer, LayoutDashboard, LogOut, FileText, CheckSquare, 
+  ShieldAlert
 } from 'lucide-react';
 import { C } from '../../constants/theme';
 import { PinGate } from '../../components/auth/PinGate';
@@ -11,54 +11,44 @@ import { Card } from '../../components/ui/Card';
 
 const ACCENT_BLUE = '#2563EB';
 
-export const KitchenApp = ({ config = {} }) => {
-  const orders = useStore(state => state.orders) || [];
-  const setOrders = useStore(state => state.setOrders);
+export const KitchenApp = () => {
+  const orders = useStore(state => state.orders);
   const kitchenAuth = useStore(state => state.kitchenAuth);
   const login = useStore(state => state.login);
   const logout = useStore(state => state.logout);
-  const menuItems = useStore(state => state.menuItems) || [];
+  const menuItems = useStore(state => state.menuItems);
 
   const [activeTab, setActiveTab] = useState('ACTIVE'); // ACTIVE, READY, MENU
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Menu Editor Search/Category State
+  // Stock search/category state
   const [activeMenuCategory, setActiveMenuCategory] = useState('All');
   const [menuSearch, setMenuSearch] = useState('');
 
-  // High-Alert Emergency SOS State
-  const [activeSOS, setActiveSOS] = useState(null);
+  const activeSOS = useMemo(() => {
+    return orders.find(o => o.type === 'EMERGENCY' && o.status !== 'DELIVERED') || null;
+  }, [orders]);
   const sosAudioRef = useRef(null);
 
-  // Check for active SOS alerts in incoming orders
   useEffect(() => {
-    const sosOrder = orders.find(o => o.type === 'EMERGENCY' && o.status !== 'DELIVERED');
-    if (sosOrder) {
-      setActiveSOS(sosOrder);
+    if (activeSOS) {
       try {
         if (!sosAudioRef.current) {
           sosAudioRef.current = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg');
           sosAudioRef.current.loop = true;
         }
         sosAudioRef.current.play().catch(() => {});
-      } catch {}
+      } catch (err) {
+        console.debug('SOS audio could not start automatically:', err);
+      }
     } else {
-      setActiveSOS(null);
       if (sosAudioRef.current) {
         sosAudioRef.current.pause();
         sosAudioRef.current.currentTime = 0;
       }
     }
-  }, [orders]);
-
-  const clearSOS = (orderId) => {
-    setOrders(orders.map(o => o.id === orderId ? { ...o, status: 'DELIVERED' } : o));
-    setActiveSOS(null);
-    if (sosAudioRef.current) {
-      sosAudioRef.current.pause();
-    }
-  };
+  }, [activeSOS]);
 
   const toggleItemAvailability = async (id, currentAvailable) => {
     try {
@@ -77,8 +67,6 @@ export const KitchenApp = ({ config = {} }) => {
 
   const handlePartialDispatch = async (orderId, updatedItems) => {
     try {
-      const allDispatched = updatedItems.every(i => i.status === 'DISPATCHED');
-      
       await fetch(`/api/admin/orders/${orderId}/partial-dispatch`, {
         method: 'POST',
         headers: {
@@ -87,13 +75,6 @@ export const KitchenApp = ({ config = {} }) => {
         },
         body: JSON.stringify({ items: updatedItems })
       });
-
-      // Update local status accordingly
-      if (allDispatched) {
-        setOrders(orders.map(o => o.id === orderId ? { ...o, items: updatedItems, status: 'ON_THE_WAY' } : o));
-      } else {
-        setOrders(orders.map(o => o.id === orderId ? { ...o, items: updatedItems, status: 'PREPARING' } : o));
-      }
     } catch (err) {
       console.error('Failed to dispatch items:', err);
     }
@@ -123,6 +104,13 @@ export const KitchenApp = ({ config = {} }) => {
     }
   };
 
+  const clearSOS = async (orderId) => {
+    await updateStatus(orderId, 'DELIVERED');
+    if (sosAudioRef.current) {
+      sosAudioRef.current.pause();
+    }
+  };
+
   const filteredOrders = useMemo(() => {
     const groupedStatuses = activeTab === 'ACTIVE'
       ? ['NEW', 'PREPARING']
@@ -140,6 +128,7 @@ export const KitchenApp = ({ config = {} }) => {
   }, [orders, activeTab, searchQuery]);
 
   const activeServiceRequests = useMemo(() => {
+    if (activeTab === 'MENU') return [];
     const groupedStatuses = activeTab === 'ACTIVE' ? ['NEW', 'PREPARING'] : ['DELIVERED'];
     return orders.filter(o => groupedStatuses.includes(o.status) && o.type === 'SERVICE');
   }, [orders, activeTab]);
@@ -149,9 +138,9 @@ export const KitchenApp = ({ config = {} }) => {
   }
 
   const tabs = [
-    { id: 'ACTIVE', label: 'Open / In Progress', icon: FileText, count: orders.filter(o => ['NEW', 'PREPARING'].includes(o.status)).length },
-    { id: 'READY', label: 'Ready / Completed', icon: CheckSquare, count: orders.filter(o => ['ON_THE_WAY', 'DELIVERED'].includes(o.status)).length },
-    { id: 'MENU', label: 'Menu Editor', icon: LayoutDashboard, count: 0 },
+    { id: 'ACTIVE', label: 'Now', icon: FileText, count: orders.filter(o => ['NEW', 'PREPARING'].includes(o.status)).length },
+    { id: 'READY', label: 'Done', icon: CheckSquare, count: orders.filter(o => ['ON_THE_WAY', 'DELIVERED'].includes(o.status)).length },
+    { id: 'MENU', label: 'Stock', icon: LayoutDashboard, count: 0 },
   ];
 
   return (
@@ -268,7 +257,7 @@ export const KitchenApp = ({ config = {} }) => {
               {tabs.find(t => t.id === activeTab)?.label}
             </h1>
             <p style={{ margin: '4px 0 0', color: C.textSub, fontSize: 14 }}>
-              {activeTab === 'MENU' ? `${menuItems.length} menu items available` : `${filteredOrders.length + activeServiceRequests.length} orders in this queue`}
+              {activeTab === 'MENU' ? `${menuItems.length} stock controls` : `${filteredOrders.length + activeServiceRequests.length} requests in this queue`}
             </p>
           </div>
           
@@ -439,7 +428,7 @@ export const KitchenApp = ({ config = {} }) => {
                         </span>
                       </div>
                       <div style={{ background: '#F9FAFB', padding: 12, borderRadius: 10, fontSize: 13, marginBottom: 14, fontWeight: 600 }}>
-                        🛠️ {order.items[0]?.name || 'Service request'}
+                        Service: {order.items[0]?.name || 'Service request'}
                       </div>
                       {order.status !== 'DELIVERED' && (
                         <button 
@@ -498,27 +487,25 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
 
   // Toggling preparation status of individual items
   const toggleItemState = (index) => {
-    if (isNew) return; // Must accept order first
-    const updatedItems = [...order.items];
-    const item = updatedItems[index];
+    const item = order.items[index];
+    if (!item || isNew || isDone || item.status === 'DISPATCHED') return;
 
-    if (isAsReady) {
-      if (item.status === 'PENDING') {
-        item.status = 'DONE';
-      } else if (item.status === 'DONE') {
-        item.status = 'DISPATCHED';
-      } else {
-        item.status = 'PENDING';
+    const updatedItems = order.items.map((currentItem, itemIndex) => {
+      if (itemIndex !== index) return currentItem;
+
+      if (isAsReady) {
+        const nextStatus = currentItem.status === 'PENDING'
+          ? 'DONE'
+          : currentItem.status === 'DONE'
+            ? 'DISPATCHED'
+            : 'PENDING';
+        return { ...currentItem, status: nextStatus };
       }
-      onPartialDispatch(order.id, updatedItems);
-    } else {
-      if (item.status === 'PENDING') {
-        item.status = 'DONE';
-      } else {
-        item.status = 'PENDING';
-      }
-      onPartialDispatch(order.id, updatedItems);
-    }
+
+      return { ...currentItem, status: currentItem.status === 'PENDING' ? 'DONE' : 'PENDING' };
+    });
+
+    onPartialDispatch(order.id, updatedItems);
   };
 
   const allCooked = order.items.every(i => i.status === 'DONE' || i.status === 'DISPATCHED');

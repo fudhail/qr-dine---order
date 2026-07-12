@@ -52,16 +52,6 @@ const injectMinutesAgo = (orders) => {
 
 let db;
 
-const getSanitizedState = (state) => ({
-  menuItems: state.menuItems,
-  orders: state.orders,
-  config: { 
-    cgst: state.config.cgst, 
-    sgst: state.config.sgst, 
-    serviceCharge: state.config.serviceCharge 
-  }
-});
-
 // Broadcast updated state to clients
 const sendGuestState = async (target, room) => {
   const state = await getFullState(db);
@@ -146,6 +136,7 @@ io.on('connection', async (socket) => {
 
   // Authenticated order placement
   socket.on('place_order', async ({ order, sessionId }) => {
+    const orderType = order.type || 'FOOD';
     const session = activeSessions.get(sessionId);
     if (!session) {
       socket.emit('order_rejected', { reason: 'Your session has expired. Please scan your room QR code again.' });
@@ -181,7 +172,7 @@ io.on('connection', async (socket) => {
     const sgstRate = sysConfig.sgst;
     const scRate = sysConfig.serviceCharge;
 
-    if ((order.type || 'FOOD') === 'FOOD') {
+    if (orderType === 'FOOD') {
       const dbMenuItems = await db.all('SELECT * FROM menu_items');
       const menuItemMap = {};
       dbMenuItems.forEach(i => { menuItemMap[i.id] = i; });
@@ -249,7 +240,7 @@ io.on('connection', async (socket) => {
         token, 
         session.room, 
         'NEW', 
-        order.type || 'FOOD', 
+        orderType, 
         createdAt, 
         order.deliveryPreference || 'AS_READY', 
         order.note || '', 
@@ -261,7 +252,7 @@ io.on('connection', async (socket) => {
     );
 
     // Dynamic KOT splitting
-    if (order.type === 'FOOD') {
+    if (orderType === 'FOOD') {
       // Group items by station_id
       const dbItems = await db.all('SELECT id, station_id FROM menu_items');
       const itemStationMap = {};
@@ -289,7 +280,7 @@ io.on('connection', async (socket) => {
     }
 
     await broadcastState();
-    if (order.type === 'EMERGENCY') {
+    if (orderType === 'EMERGENCY') {
       socket.emit('sos_accepted', { orderId });
     } else {
       socket.emit('order_accepted', { orderId });
@@ -447,10 +438,10 @@ app.post('/api/admin/orders', authenticateStaff, async (req, res) => {
   for (const o of newOrders) {
     await db.run('UPDATE orders SET status = ?, items = ? WHERE id = ?', [o.status, JSON.stringify(o.items), o.id]);
     
-    // Auto-post to Syscon HMS when order is delivered
+    // Auto-post only billable dining orders to Syscon HMS when delivered.
     if (o.status === 'DELIVERED') {
       const dbOrder = await db.get('SELECT * FROM orders WHERE id = ?', [o.id]);
-      if (dbOrder && dbOrder.syscon_posted !== 1) {
+      if (dbOrder && dbOrder.type === 'FOOD' && Number(dbOrder.total) > 0 && dbOrder.syscon_posted !== 1) {
         const postRes = await sysconAPI.postFolioCharge(dbOrder);
         if (postRes.success) {
           await db.run('UPDATE orders SET syscon_posted = 1 WHERE id = ?', [o.id]);
@@ -469,12 +460,15 @@ app.post('/api/admin/orders/:id/partial-dispatch', authenticateStaff, async (req
   const orderId = req.params.id;
   const { items } = req.body;
   
-  if (!items) return res.status(400).json({ error: 'Items required' });
+  if (!Array.isArray(items)) return res.status(400).json({ error: 'Items required' });
 
-  // Update order items array (marks individual items as DISPATCHED / DELIVERED)
-  await db.run('UPDATE orders SET items = ? WHERE id = ?', [JSON.stringify(items), orderId]);
+  const allDispatched = items.length > 0 && items.every(i => i.status === 'DISPATCHED');
+  const nextStatus = allDispatched ? 'ON_THE_WAY' : 'PREPARING';
+  await db.run(
+    "UPDATE orders SET items = ?, status = ? WHERE id = ? AND status NOT IN ('DELIVERED', 'CANCELLED')",
+    [JSON.stringify(items), nextStatus, orderId]
+  );
   
-  // Broadcast the state update to guests immediately
   await broadcastState();
   res.json({ success: true });
 });

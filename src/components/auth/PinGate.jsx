@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Lock, ArrowRight, Shield } from 'lucide-react';
 import { C } from '../../constants/theme';
 import { Card } from '../ui/Card';

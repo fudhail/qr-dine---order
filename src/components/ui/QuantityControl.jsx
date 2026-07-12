@@ -1,4 +1,3 @@
-import React from 'react';
 import { C } from '../../constants/theme';
 
 const ACCENT = '#2563EB';

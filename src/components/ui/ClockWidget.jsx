@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { C } from '../../constants/theme';
 
 export const ClockWidget = () => {

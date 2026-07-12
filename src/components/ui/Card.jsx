@@ -1,6 +1,3 @@
-import React from 'react';
-import { C } from '../../constants/theme';
-
 export const Card = ({ children, className = '', style = {}, onClick, onMouseEnter, onMouseLeave }) => (
   <div 
     onClick={onClick} 

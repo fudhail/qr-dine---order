@@ -1,4 +1,3 @@
-import React from 'react';
 import { C } from '../../constants/theme';
 
 export const VegDot = ({ isVeg }) => (

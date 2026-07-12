@@ -1,20 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ShoppingCart, ChevronLeft, CheckCircle, MapPin, Phone,
-  Search, SlidersHorizontal, Star, Clock, Flame, Utensils, HelpCircle,
-  MoreHorizontal, ChefHat, Check, AlertOctagon, HelpCircle as HelpIcon, Trash2, Heart, Award
+  Search, SlidersHorizontal, Star, Clock, Utensils, HelpCircle,
+  ChefHat, AlertOctagon, Award
 } from 'lucide-react';
 import { C } from '../../constants/theme';
 import { Card } from '../../components/ui/Card';
 import { QuantityControl } from '../../components/ui/QuantityControl';
 import { VegDot } from '../../components/ui/VegDot';
-import { CONFIG } from '../../config';
 import { useStore } from '../../store/useStore';
 import { socket } from '../../lib/socket';
 
 const ACCENT_BLUE = '#2563EB';
 const ACCENT_RED = '#EF4444';
-const ACCENT_BLUE_SOFT = 'rgba(37,99,235,0.12)';
 
 const getMealTimeConfig = (hour) => {
   if (hour >= 5 && hour < 11) {
@@ -143,7 +141,7 @@ const FeaturedItemCard = ({ item, meta, qty, updateQty, onCardClick }) => {
   );
 };
 
-const MenuItemCard = ({ item, idx, qty, isTimingHighlight, updateQty, onCardClick }) => {
+const MenuItemCard = ({ item, qty, isTimingHighlight, updateQty, onCardClick }) => {
   return (
     <Card
       onClick={() => onCardClick(item)}
@@ -190,9 +188,9 @@ const MenuItemCard = ({ item, idx, qty, isTimingHighlight, updateQty, onCardClic
   );
 };
 
-export const GuestApp = ({ config = CONFIG }) => {
-  const menuItems = useStore(state => state.menuItems) || [];
-  const orders = useStore(state => state.orders) || [];
+export const GuestApp = () => {
+  const menuItems = useStore(state => state.menuItems);
+  const orders = useStore(state => state.orders);
   const socketConnected = useStore(state => state.socketConnected);
   const billingConfig = useStore(state => state.config);
 
@@ -300,7 +298,7 @@ export const GuestApp = ({ config = CONFIG }) => {
       setCurrentScreen('tracking');
     };
 
-    const handleSosAccepted = (data) => {
+    const handleSosAccepted = () => {
       showToast('SOS ALARM TRIGGERED! Staff are responding.');
     };
 
@@ -331,12 +329,13 @@ export const GuestApp = ({ config = CONFIG }) => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [modalQty, setModalQty] = useState(1);
   const [modalInstructions, setModalInstructions] = useState({});
+  const getQty = useCallback((id) => cart.find(i => i.id === id)?.qty || 0, [cart]);
 
   useEffect(() => {
     if (selectedItem) {
       setModalQty(getQty(selectedItem.id) || 1);
     }
-  }, [selectedItem]);
+  }, [selectedItem, getQty]);
 
   const categories = ['All', ...new Set(menuItems.filter(i => i.category !== 'Services').map(i => i.category))];
 
@@ -349,6 +348,8 @@ export const GuestApp = ({ config = CONFIG }) => {
     const matchesVeg = !vegOnly || i.isVeg === 1;
     return i.available && matchesCategory && matchesSearch && matchesVeg;
   });
+  const serviceItems = menuItems.filter(i => i.category === 'Services' && i.available);
+  const mealSpecialItem = menuItems.find(i => Number(i.id) === Number(mealConfig.special.id) && i.available) || null;
 
   const updateQty = (item, delta) => {
     setCart(prev => {
@@ -369,8 +370,6 @@ export const GuestApp = ({ config = CONFIG }) => {
     });
   };
 
-  const getQty = (id) => cart.find(i => i.id === id)?.qty || 0;
-
   const cartTotalQty = cart.reduce((sum, item) => sum + item.qty, 0);
   const cartSubtotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
   const cgstRate = Number(billingConfig?.cgst ?? 2.5);
@@ -381,7 +380,7 @@ export const GuestApp = ({ config = CONFIG }) => {
   const sgst = (cartSubtotal + serviceCharge) * (sgstRate / 100);
   const grandTotal = cartSubtotal + cgst + sgst + serviceCharge;
 
-  // Handle Swiggy-like recommendations
+  // Recommended add-ons
   const getAiRecommendations = () => {
     // Return items that complement what's in cart, or simple popular foods
     const inCartIds = new Set(cart.map(c => c.id));
@@ -504,7 +503,10 @@ export const GuestApp = ({ config = CONFIG }) => {
     }
   };
 
-  const trackingOrder = orders.find(o => o.id === lastOrderId && o.type !== 'EMERGENCY') || orders.find(o => o.room === roomNumber && o.status !== 'DELIVERED' && o.type !== 'EMERGENCY');
+  const activeFoodStatuses = ['NEW', 'PREPARING', 'ON_THE_WAY'];
+  const trackingOrder =
+    orders.find(o => o.id === lastOrderId && o.type === 'FOOD' && activeFoodStatuses.includes(o.status)) ||
+    orders.find(o => String(o.room) === String(roomNumber) && o.type === 'FOOD' && activeFoodStatuses.includes(o.status));
 
   // Trigger feedback form automatically if order completed/delivered
   useEffect(() => {
@@ -573,7 +575,7 @@ export const GuestApp = ({ config = CONFIG }) => {
             </div>
             <h3 style={{ fontSize: 18, fontWeight: 800, margin: '0 0 10px 0' }}>Item Out of Stock!</h3>
             <p style={{ fontSize: 14, color: C.textSub, lineHeight: 1.5, marginBottom: 20 }}>
-              We apologize, but **{outOfStockAlert.name}** just ran out in the kitchen. Would you like to select an alternative dish or swap it?
+              We apologize, but {outOfStockAlert.name} just ran out in the kitchen. Please select an alternative dish.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button 
@@ -745,32 +747,33 @@ export const GuestApp = ({ config = CONFIG }) => {
 
           {/* Body */}
           <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-            {/* Meal Special Banner */}
-            <div style={{ background: `linear-gradient(135deg, ${C.emerald} 0%, #111827 100%)`, borderRadius: 24, padding: 20, color: C.white, position: 'relative', overflow: 'hidden' }}>
-              <div style={{ width: '60%', position: 'relative', zIndex: 1 }}>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(255,255,255,0.15)', padding: '3px 8px', borderRadius: 999, fontSize: 9, fontWeight: 800, textTransform: 'uppercase', marginBottom: 8 }}>
-                  <Clock size={10} /> {mealConfig.mealName} Special
+            {mealSpecialItem && (
+              <div style={{ background: `linear-gradient(135deg, ${C.emerald} 0%, #111827 100%)`, borderRadius: 24, padding: 20, color: C.white, position: 'relative', overflow: 'hidden' }}>
+                <div style={{ width: '60%', position: 'relative', zIndex: 1 }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(255,255,255,0.15)', padding: '3px 8px', borderRadius: 999, fontSize: 9, fontWeight: 800, textTransform: 'uppercase', marginBottom: 8 }}>
+                    <Clock size={10} /> {mealConfig.mealName} Special
+                  </div>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: C.white }}>{mealSpecialItem.name}</h3>
+                  <p style={{ margin: '6px 0 14px 0', fontSize: 11.5, opacity: 0.9 }}>{mealSpecialItem.desc || mealConfig.tagline}</p>
+                  <button
+                    onClick={() => setSelectedItem(mealSpecialItem)}
+                    style={{ background: C.white, color: C.text, border: 'none', padding: '8px 14px', borderRadius: 999, fontWeight: 800, fontSize: 11, cursor: 'pointer' }}
+                  >
+                    Order Now (₹{mealSpecialItem.price})
+                  </button>
                 </div>
-                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: C.white }}>{mealConfig.special.name}</h3>
-                <p style={{ margin: '6px 0 14px 0', fontSize: 11.5, opacity: 0.9 }}>Fresh morning energy & kitchen specials.</p>
-                <button
-                  onClick={() => setSelectedItem(mealConfig.special)}
-                  style={{ background: C.white, color: C.text, border: 'none', padding: '8px 14px', borderRadius: 999, fontWeight: 800, fontSize: 11, cursor: 'pointer' }}
-                >
-                  Order Now (₹{mealConfig.special.price})
-                </button>
+                {mealSpecialItem.image && (
+                  <div style={{ position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', width: 100, height: 100, borderRadius: 20, overflow: 'hidden', border: '3px solid rgba(255,255,255,0.2)' }}>
+                    <img src={mealSpecialItem.image} alt={mealSpecialItem.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                )}
               </div>
-              {mealConfig.special.image && (
-                <div style={{ position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', width: 100, height: 100, borderRadius: 20, overflow: 'hidden', border: '3px solid rgba(255,255,255,0.2)' }}>
-                  <img src={mealConfig.special.image} alt={mealConfig.special.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </div>
-              )}
-            </div>
+            )}
 
-            {/* AI Recommendations (Swiggy-style) */}
+            {/* Recommendations */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: C.text }}>Swiggy-Style AI Pairings</h3>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: C.text }}>Recommended Add-ons</h3>
                 <span style={{ color: ACCENT_BLUE, fontSize: 11, fontWeight: 700 }}>Recommended</span>
               </div>
               <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 6 }} className="hide-scrollbar">
@@ -826,11 +829,36 @@ export const GuestApp = ({ config = CONFIG }) => {
                       </div>
                     </div>
                   ))
-                ) : displayedItems.map((item, idx) => (
-                  <MenuItemCard 
+                ) : displayedItems.length === 0 ? (
+                  <Card style={{ padding: 22, borderRadius: 20, textAlign: 'center', border: `1px dashed ${C.border}`, background: C.white }}>
+                    <Utensils size={28} color={C.textMuted} style={{ margin: '0 auto 10px auto' }} />
+                    <h3 style={{ margin: '0 0 6px 0', fontSize: 15, fontWeight: 800, color: C.text }}>No dishes found</h3>
+                    <p style={{ margin: '0 auto 14px auto', fontSize: 12, lineHeight: 1.5, color: C.textSub, maxWidth: 300 }}>
+                      Nothing is available for this search or category right now.
+                    </p>
+                    <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => {
+                          setSearchQuery('');
+                          setVegOnly(false);
+                          setActiveCategory('All');
+                        }}
+                        style={{ background: ACCENT_BLUE, color: '#FFF', border: 'none', padding: '9px 14px', borderRadius: 12, fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+                      >
+                        Show All Dishes
+                      </button>
+                      <button
+                        onClick={() => setShowCustomModal(true)}
+                        style={{ background: C.borderLight, color: C.text, border: 'none', padding: '9px 14px', borderRadius: 12, fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+                      >
+                        Custom Request
+                      </button>
+                    </div>
+                  </Card>
+                ) : displayedItems.map((item) => (
+                  <MenuItemCard
                     key={item.id}
                     item={item}
-                    idx={idx}
                     qty={getQty(item.id)}
                     isTimingHighlight={item.category === mealConfig.defaultCategory}
                     updateQty={updateQty}
@@ -850,39 +878,28 @@ export const GuestApp = ({ config = CONFIG }) => {
           <p style={{ fontSize: 13, color: C.textSub, margin: '0 0 20px 0' }}>Directly request hotel amenities and services in one tap.</p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <Card style={{ padding: 16, borderRadius: 20, boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <h3 style={{ fontSize: 15, fontWeight: 800, margin: 0 }}>Room Cleaning</h3>
-                <span style={{ fontSize: 11, color: C.emeraldMid, background: '#D1FAE5', padding: '3px 8px', borderRadius: 999, fontWeight: 700 }}>24/7 Service</span>
-              </div>
-              <p style={{ fontSize: 12, color: C.textSub, margin: '0 0 14px 0', lineHeight: 1.4 }}>Request housekeeping to sweep, clean surfaces, and make the bed in your room.</p>
-              <button 
-                onClick={() => {
-                  placeOrder({ type: 'SERVICE', name: 'Make My Room / Cleaning', note: 'Housekeeping requested' });
-                  showToast('Cleaning request submitted to reception!');
-                }}
-                style={{ background: ACCENT_BLUE, color: '#FFF', border: 'none', width: '100%', padding: 12, borderRadius: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}
-              >
-                Send Make My Room Request
-              </button>
-            </Card>
-
-            <Card style={{ padding: 16, borderRadius: 20, boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <h3 style={{ fontSize: 15, fontWeight: 800, margin: 0 }}>Laundry Service</h3>
-                <span style={{ fontSize: 11, color: C.textSub, background: C.borderLight, padding: '3px 8px', borderRadius: 999, fontWeight: 700 }}>Standard pricing</span>
-              </div>
-              <p style={{ fontSize: 12, color: C.textSub, margin: '0 0 14px 0', lineHeight: 1.4 }}>Request laundry pick-up. Items will be cleaned, folded, and charged to room folio.</p>
-              <button 
-                onClick={() => {
-                  placeOrder({ type: 'SERVICE', name: 'Laundry Pick-up & Wash', note: 'Laundry collection requested' });
-                  showToast('Laundry collection request sent!');
-                }}
-                style={{ background: ACCENT_BLUE, color: '#FFF', border: 'none', width: '100%', padding: 12, borderRadius: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}
-              >
-                Request Laundry Pick-up
-              </button>
-            </Card>
+            {serviceItems.length > 0 ? serviceItems.map(service => (
+              <Card key={service.id} style={{ padding: 16, borderRadius: 20, boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 12 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 800, margin: 0 }}>{service.name}</h3>
+                  <span style={{ fontSize: 11, color: C.emeraldMid, background: '#D1FAE5', padding: '3px 8px', borderRadius: 999, fontWeight: 700, whiteSpace: 'nowrap' }}>Available</span>
+                </div>
+                <p style={{ fontSize: 12, color: C.textSub, margin: '0 0 14px 0', lineHeight: 1.4 }}>{service.desc || 'Request this hotel service from your room.'}</p>
+                <button 
+                  onClick={() => {
+                    placeOrder({ type: 'SERVICE', name: service.name, note: service.desc || `${service.name} requested` });
+                    showToast('Service request submitted to reception!');
+                  }}
+                  style={{ background: ACCENT_BLUE, color: '#FFF', border: 'none', width: '100%', padding: 12, borderRadius: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}
+                >
+                  Request Service
+                </button>
+              </Card>
+            )) : (
+              <Card style={{ padding: 18, borderRadius: 20, textAlign: 'center', color: C.textSub }}>
+                No room services are available right now. Please call the front desk.
+              </Card>
+            )}
 
             <Card style={{ padding: 16, borderRadius: 20, boxShadow: '0 4px 12px rgba(0,0,0,0.03)', display: 'flex', alignItems: 'center', gap: 14 }}>
               <div style={{ background: '#EFF6FF', padding: 12, borderRadius: '50%', color: ACCENT_BLUE }}><Phone size={20} /></div>
