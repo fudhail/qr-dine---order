@@ -544,6 +544,7 @@ app.post('/api/admin/orders/:id/partial-dispatch', authenticateStaff, async (req
 
   if (bundleKeys.length > 0) {
     if (order.deliveryPreference !== 'AS_READY') {
+      console.error('400: Not AS_READY');
       return res.status(400).json({ error: 'Serve-together group dispatch is only used for as-ready orders' });
     }
 
@@ -551,11 +552,13 @@ app.post('/api/admin/orders/:id/partial-dispatch', authenticateStaff, async (req
     const targetBundles = dispatchPlan.bundles.filter(bundle => bundleKeys.includes(String(bundle.key)));
 
     if (targetBundles.length === 0) {
+      console.error('400: targetBundles length 0. bundleKeys:', bundleKeys, 'dispatchPlan.bundles keys:', dispatchPlan.bundles.map(b => b.key));
       return res.status(400).json({ error: 'No matching serve-together group was found' });
     }
 
     const stillPending = targetBundles.filter(bundle => !bundle.allDispatched && !bundle.canDispatch);
     if (stillPending.length > 0) {
+      console.error('400: stillPending > 0. stillPending:', stillPending.map(b => ({ key: b.key, ready: b.readyCount, total: b.totalCount })));
       return res.status(400).json({
         error: 'Selected group is not ready to dispatch yet',
         bundles: stillPending.map(bundle => ({
@@ -568,7 +571,7 @@ app.post('/api/admin/orders/:id/partial-dispatch', authenticateStaff, async (req
     }
 
     const dispatchSet = new Set(bundleKeys.map(key => String(key)));
-    updatedItems = currentItems.map(item => (
+    updatedItems = dispatchPlan.items.map(item => (
       dispatchSet.has(String(item.serveTogetherKey || ''))
         ? { ...item, status: 'DISPATCHED' }
         : item
@@ -576,6 +579,7 @@ app.post('/api/admin/orders/:id/partial-dispatch', authenticateStaff, async (req
   } else if (Array.isArray(req.body?.items)) {
     updatedItems = req.body.items;
   } else {
+    console.error('400: No items or bundle keys');
     return res.status(400).json({ error: 'Items or bundle keys required' });
   }
 

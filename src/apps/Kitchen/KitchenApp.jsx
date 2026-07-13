@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   ChefHat, Circle, MapPin, AlertTriangle, Search, 
   Printer, LayoutDashboard, LogOut, FileText, CheckSquare, 
@@ -46,6 +47,11 @@ export const KitchenApp = () => {
   // Stock search/category state
   const [activeMenuCategory, setActiveMenuCategory] = useState('All');
   const [menuSearch, setMenuSearch] = useState('');
+
+  // Completed tab pagination and filter
+  const [completedFilterDate, setCompletedFilterDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [completedPage, setCompletedPage] = useState(1);
+  const ITEMS_PER_PAGE = 12;
 
   const activeSOS = useMemo(() => {
     return sosAlerts.find(alert => !['RESOLVED', 'CANCELLED'].includes(alert.status)) || null;
@@ -153,12 +159,25 @@ export const KitchenApp = () => {
   };
 
   const filteredOrders = useMemo(() => {
-    const groupedStatuses = activeTab === 'ACTIVE'
+    const groupedStatuses = activeTab === 'QUEUE'
       ? ['NEW', 'PREPARING']
-      : activeTab === 'READY'
-        ? ['ON_THE_WAY', 'DELIVERED']
-        : [];
+      : activeTab === 'DELIVERY'
+        ? ['ON_THE_WAY']
+        : activeTab === 'HISTORY'
+          ? ['DELIVERED']
+          : [];
     let filtered = activeTab === 'MENU' ? [] : orders.filter(o => groupedStatuses.includes(o.status) && o.type === 'FOOD');
+    
+    if (activeTab === 'HISTORY') {
+      if (completedFilterDate) {
+        filtered = filtered.filter(o => {
+          const oDate = new Date(o.createdAt).toISOString().split('T')[0];
+          return oDate === completedFilterDate;
+        });
+      }
+      filtered.sort((a, b) => b.createdAt - a.createdAt);
+    }
+    
     if (searchQuery) {
       filtered = filtered.filter(o => 
         o.token.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -166,11 +185,19 @@ export const KitchenApp = () => {
       );
     }
     return filtered;
-  }, [orders, activeTab, searchQuery]);
+  }, [orders, activeTab, searchQuery, completedFilterDate]);
+
+  const paginatedOrders = useMemo(() => {
+    if (activeTab !== 'HISTORY') return filteredOrders;
+    const start = (completedPage - 1) * ITEMS_PER_PAGE;
+    return filteredOrders.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredOrders, activeTab, completedPage]);
+  
+  const totalPages = Math.ceil(filteredOrders.length / ITEMS_PER_PAGE);
 
   const activeServiceRequests = useMemo(() => {
     if (activeTab === 'MENU') return [];
-    const groupedStatuses = activeTab === 'ACTIVE' ? ['NEW', 'PREPARING'] : ['DELIVERED'];
+    const groupedStatuses = activeTab === 'QUEUE' ? ['NEW', 'PREPARING'] : activeTab === 'DELIVERY' ? ['ON_THE_WAY'] : ['DELIVERED'];
     return orders.filter(o => groupedStatuses.includes(o.status) && o.type === 'SERVICE');
   }, [orders, activeTab]);
 
@@ -191,8 +218,9 @@ export const KitchenApp = () => {
   }
 
   const tabs = [
-    { id: 'ACTIVE', label: 'Pantry Queue', icon: FileText, count: orders.filter(o => ['NEW', 'PREPARING'].includes(o.status)).length },
-    { id: 'READY', label: 'Completed', icon: CheckSquare, count: orders.filter(o => ['ON_THE_WAY', 'DELIVERED'].includes(o.status)).length },
+    { id: 'QUEUE', label: 'Pantry Queue', icon: FileText, count: orders.filter(o => ['NEW', 'PREPARING'].includes(o.status)).length },
+    { id: 'DELIVERY', label: 'In Delivery', icon: CheckSquare, count: orders.filter(o => o.status === 'ON_THE_WAY').length },
+    { id: 'HISTORY', label: 'Completed', icon: LayoutDashboard, count: orders.filter(o => o.status === 'DELIVERED').length },
     { id: 'MENU', label: 'Stock Control', icon: LayoutDashboard, count: 0 },
   ];
 
@@ -452,7 +480,41 @@ export const KitchenApp = () => {
             
             {/* DINING ORDERS */}
             <div>
-              <h2 style={{ fontSize: 18, fontWeight: 800, color: C.text, marginBottom: 16 }}>Pantry Order Queue</h2>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h2 style={{ fontSize: 18, fontWeight: 800, color: C.text, margin: 0 }}>
+                  {activeTab === 'HISTORY' ? 'Completed Orders' : activeTab === 'DELIVERY' ? 'Orders In Delivery' : 'Pantry Order Queue'}
+                </h2>
+                {activeTab === 'HISTORY' && (
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <input 
+                      type="date" 
+                      value={completedFilterDate}
+                      onChange={(e) => { setCompletedFilterDate(e.target.value); setCompletedPage(1); }}
+                      style={{ padding: '8px 12px', borderRadius: 10, border: `1px solid ${C.borderLight}`, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: C.text }}
+                    />
+                    {totalPages > 1 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#FFF', padding: '4px', borderRadius: 10, border: `1px solid ${C.borderLight}` }}>
+                        <button 
+                          onClick={() => setCompletedPage(p => Math.max(1, p - 1))}
+                          disabled={completedPage === 1}
+                          style={{ background: 'transparent', border: 'none', padding: '4px 8px', cursor: completedPage === 1 ? 'default' : 'pointer', opacity: completedPage === 1 ? 0.4 : 1, fontWeight: 800 }}
+                        >
+                          &lt;
+                        </button>
+                        <span style={{ fontSize: 12, fontWeight: 700, padding: '0 4px', color: C.textMuted }}>Page {completedPage} of {totalPages}</span>
+                        <button 
+                          onClick={() => setCompletedPage(p => Math.min(totalPages, p + 1))}
+                          disabled={completedPage >= totalPages}
+                          style={{ background: 'transparent', border: 'none', padding: '4px 8px', cursor: completedPage >= totalPages ? 'default' : 'pointer', opacity: completedPage >= totalPages ? 0.4 : 1, fontWeight: 800 }}
+                        >
+                          &gt;
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {orders.length === 0 ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(270px, 1fr))', gap: 16, alignItems: 'start' }}>
                   {Array.from({ length: 3 }).map((_, idx) => (
@@ -471,11 +533,11 @@ export const KitchenApp = () => {
                 </div>
               ) : filteredOrders.length === 0 ? (
                 <div style={{ background: C.white, borderRadius: 16, padding: 36, textAlign: 'center', color: C.textMuted, border: `1px solid ${C.borderLight}` }}>
-                  No active dining orders right now.
+                  {activeTab === 'HISTORY' ? 'No completed orders found for this date.' : 'No active orders right now.'}
                 </div>
               ) : (
                 <MasonryOrderGrid
-                  orders={filteredOrders}
+                  orders={activeTab === 'HISTORY' ? paginatedOrders : filteredOrders}
                   renderOrder={(order) => (
                     <TicketCard
                       key={order.id}
@@ -529,55 +591,16 @@ export const KitchenApp = () => {
 };
 
 const MasonryOrderGrid = ({ orders, renderOrder }) => {
-  const containerRef = useRef(null);
-  const [columnCount, setColumnCount] = useState(1);
-
-  useEffect(() => {
-    const updateColumnCount = () => {
-      const width = containerRef.current?.getBoundingClientRect().width || 0;
-      if (!width) return;
-      const nextCount = Math.max(1, Math.floor((width + ORDER_CARD_GAP) / (ORDER_CARD_MIN_WIDTH + ORDER_CARD_GAP)));
-      setColumnCount(nextCount);
-    };
-
-    updateColumnCount();
-
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', updateColumnCount);
-      return () => window.removeEventListener('resize', updateColumnCount);
-    }
-
-    const observer = new ResizeObserver(updateColumnCount);
-    if (containerRef.current) observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, []);
-
-  const columns = useMemo(() => {
-    const nextColumns = Array.from({ length: columnCount }, () => ({
-      height: 0,
-      orders: []
-    }));
-
-    orders.forEach(order => {
-      let shortestColumnIndex = 0;
-      for (let index = 1; index < nextColumns.length; index += 1) {
-        if (nextColumns[index].height < nextColumns[shortestColumnIndex].height) {
-          shortestColumnIndex = index;
-        }
-      }
-
-      nextColumns[shortestColumnIndex].orders.push(order);
-      nextColumns[shortestColumnIndex].height += estimateOrderCardHeight(order) + ORDER_CARD_GAP;
-    });
-
-    return nextColumns;
-  }, [orders, columnCount]);
-
   return (
-    <div ref={containerRef} style={{ display: 'flex', alignItems: 'flex-start', gap: ORDER_CARD_GAP, width: '100%' }}>
-      {columns.map((column, columnIndex) => (
-        <div key={columnIndex} style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: ORDER_CARD_GAP }}>
-          {column.orders.map(order => renderOrder(order))}
+    <div style={{
+      columnCount: 'auto',
+      columnWidth: ORDER_CARD_MIN_WIDTH,
+      columnGap: ORDER_CARD_GAP,
+      width: '100%'
+    }}>
+      {orders.map(order => (
+        <div key={order.id} style={{ breakInside: 'avoid', marginBottom: ORDER_CARD_GAP }}>
+          {renderOrder(order)}
         </div>
       ))}
     </div>
@@ -710,37 +733,39 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(205px, 1fr))', gap: 10, alignItems: 'start' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {dispatchBundles.map(bundle => (
-              <div
-                key={bundle.key}
-                style={{
-                  border: `1px solid ${bundle.allDispatched ? '#D1D5DB' : bundle.canDispatch ? '#86EFAC' : '#E5E7EB'}`,
-                  background: bundle.allDispatched ? '#F8FAFC' : bundle.canDispatch ? '#ECFDF5' : '#FFF',
-                  borderRadius: 12,
-                  padding: 10,
-                  minWidth: 0
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', color: C.textMuted, letterSpacing: '0.5px' }}>
-                      Group {bundle.key} {bundle.kind === 'ANCHOR' ? 'Main set' : bundle.kind === 'INDEPENDENT' ? 'Standalone item' : 'Fallback item'}
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginTop: 2, lineHeight: 1.2 }}>{bundle.label}</div>
+              <div key={bundle.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>
+                    {bundle.label}
                   </div>
-                  <div style={{ fontSize: 9.5, fontWeight: 900, textTransform: 'uppercase', borderRadius: 999, padding: '4px 7px', background: bundle.allDispatched ? '#E5E7EB' : bundle.canDispatch ? '#DCFCE7' : '#FEF3C7', color: bundle.allDispatched ? '#6B7280' : bundle.canDispatch ? '#15803D' : '#B45309', whiteSpace: 'nowrap' }}>
-                    {bundle.allDispatched ? 'Sent' : bundle.canDispatch ? 'Ready' : `${bundle.readyCount}/${bundle.totalCount} ready`}
-                  </div>
+                  {isAsReady && !bundle.allDispatched && bundle.canDispatch && (
+                    <button
+                      onClick={() => onPartialDispatch(order.id, { bundleKeys: [bundle.key] })}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: 6,
+                        border: 'none',
+                        background: '#10B981',
+                        color: '#FFF',
+                        fontWeight: 800,
+                        fontSize: 10,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      SEND GROUP
+                    </button>
+                  )}
                 </div>
 
                 {bundle.warnings?.length > 0 && (
-                  <div style={{ marginTop: 8, fontSize: 11.5, fontWeight: 700, color: '#B45309', background: '#FFFBEB', borderRadius: 10, padding: '6px 8px' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#B45309' }}>
                     {bundle.warnings.join(' | ')}
                   </div>
                 )}
 
-                <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {bundle.items.map((item, itemIndex) => {
                     const isGroupItemDone = item.status === 'DONE';
                     const isGroupItemSent = item.status === 'DISPATCHED' || isDone;
@@ -753,13 +778,10 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
                         style={{
                           display: 'flex',
                           alignItems: 'center',
-                          gap: 8,
-                          padding: '7px 8px',
-                          borderRadius: 9,
-                          background: isGroupItemSent ? '#F3F4F6' : isGroupItemDone ? '#ECFDF5' : '#FFFFFF',
-                          border: `1px solid ${isGroupItemDone || isGroupItemSent ? '#BBF7D0' : C.borderLight}`,
+                          gap: 10,
+                          padding: '6px 0',
                           cursor: canToggleItem ? 'pointer' : 'default',
-                          opacity: isGroupItemSent ? 0.65 : 1
+                          opacity: isGroupItemSent ? 0.5 : 1
                         }}
                       >
                         {isGroupItemSent ? (
@@ -770,46 +792,17 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
                           <Circle size={18} color="#CBD5E1" />
                         )}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 11.5, fontWeight: 800, color: C.text, textDecoration: isGroupItemSent ? 'line-through' : 'none', lineHeight: 1.25 }}>
+                          <div style={{ fontSize: 13, fontWeight: 650, color: C.text, textDecoration: isGroupItemSent ? 'line-through' : 'none' }}>
                             {item.qty}x {item.name}
                           </div>
-                          <div style={{ marginTop: 1, fontSize: 10, fontWeight: 700, color: C.textMuted }}>
-                            {item.cuisine || item.category || 'Kitchen'}
-                          </div>
                         </div>
-                        <span style={{ fontSize: 10, fontWeight: 900, color: isGroupItemSent ? '#9CA3AF' : isGroupItemDone ? '#10B981' : '#6B7280', textTransform: 'uppercase' }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: isGroupItemSent ? '#9CA3AF' : isGroupItemDone ? '#10B981' : '#6B7280' }}>
                           {isGroupItemSent ? 'Sent' : isGroupItemDone ? 'Ready' : 'Waiting'}
                         </span>
                       </div>
                     );
                   })}
                 </div>
-
-                {isAsReady && !bundle.allDispatched && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-                    {bundle.canDispatch ? (
-                      <button
-                        onClick={() => onPartialDispatch(order.id, { bundleKeys: [bundle.key] })}
-                        style={{
-                          padding: '7px 10px',
-                          borderRadius: 9,
-                          border: 'none',
-                          background: '#10B981',
-                          color: '#FFF',
-                          fontWeight: 800,
-                          fontSize: 11.5,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Send group
-                      </button>
-                    ) : (
-                      <div style={{ padding: '7px 10px', borderRadius: 9, background: '#E5E7EB', color: '#94A3B8', fontWeight: 800, fontSize: 11.5 }}>
-                        Waiting
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             ))}
           </div>
@@ -850,9 +843,9 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
                 <div style={{ marginTop: 3, fontSize: 10.5, color: C.textMuted, fontWeight: 700 }}>
                   {item.cuisine || item.category || 'Kitchen'}
                 </div>
-                {isAsReady && item.serveTogetherKey && (
+                {isAsReady && item.serveTogetherLabel && (
                   <div style={{ marginTop: 4, fontSize: 10, color: ACCENT_BLUE, fontWeight: 800, textTransform: 'uppercase' }}>
-                    Group {item.serveTogetherKey}{item.serveTogetherWarning ? ` | ${item.serveTogetherWarning}` : ''}
+                    {item.serveTogetherLabel}{item.serveTogetherWarning ? ` | ${item.serveTogetherWarning}` : ''}
                   </div>
                 )}
               </div>
@@ -869,10 +862,10 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
       <div style={{ padding: 12, backgroundColor: C.sand, borderTop: `1px solid ${C.borderLight}` }}>
         {isNew && (
           <button 
-            onClick={() => updateStatus(order.id, 'PREPARING')}
+            onClick={() => setPrintLayoutOpen(true)}
             style={{ width: '100%', padding: 12, borderRadius: 10, border: 'none', backgroundColor: '#3B82F6', color: '#FFF', fontWeight: 800, fontSize: 14, cursor: 'pointer' }}
           >
-            SEND KOT TO CHEFS
+            REVIEW & SEND KOT TO CHEFS
           </button>
         )}
         {isPrep && (
@@ -912,7 +905,7 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
       </div>
 
       {/* Sequential KOT Print Stream Preview */}
-      {printLayoutOpen && (
+      {printLayoutOpen && createPortal(
         <div className="print-backdrop" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
           <div className="print-section" style={{ background: '#FFF', padding: 20, borderRadius: 20, maxWidth: 400, width: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -941,9 +934,9 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
                       <div key={i} style={{ fontSize: 12, fontWeight: 700, margin: '2px 0', display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                           <span>{item.name}</span>
-                          {isAsReady && item.serveTogetherKey && (
+                          {isAsReady && item.serveTogetherLabel && (
                             <span style={{ fontSize: 9, fontWeight: 900, color: ACCENT_BLUE, background: '#EFF6FF', padding: '2px 5px', borderRadius: 999, textTransform: 'uppercase' }}>
-                              Group {item.serveTogetherKey}
+                              {item.serveTogetherLabel}
                             </span>
                           )}
                         </span>
@@ -955,19 +948,33 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
               ))}
             </div>
 
-            <button 
-              className="no-print"
-              onClick={() => {
-                window.print();
-                setPrintLayoutOpen(false);
-              }}
-              style={{ background: ACCENT_BLUE, color: '#FFF', padding: 12, borderRadius: 12, border: 'none', fontWeight: 800, cursor: 'pointer' }}
-            >
-              Print Slips
-            </button>
+            <div style={{ display: 'flex', gap: 12 }}>
+              {isNew && (
+                <button 
+                  className="no-print"
+                  onClick={() => {
+                    updateStatus(order.id, 'PREPARING');
+                    setPrintLayoutOpen(false);
+                  }}
+                  style={{ flex: 1, background: C.borderLight, color: C.text, padding: 12, borderRadius: 12, border: 'none', fontWeight: 800, cursor: 'pointer' }}
+                >
+                  Skip Print & Send
+                </button>
+              )}
+              <button 
+                className="no-print"
+                onClick={() => {
+                  window.print();
+                  if (isNew) updateStatus(order.id, 'PREPARING');
+                  setPrintLayoutOpen(false);
+                }}
+                style={{ flex: 2, background: ACCENT_BLUE, color: '#FFF', padding: 12, borderRadius: 12, border: 'none', fontWeight: 800, cursor: 'pointer' }}
+              >
+                {isNew ? 'Print & Send KOT' : 'Print Slips'}
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        </div>, document.body)}
     </Card>
   );
 };
