@@ -8,6 +8,10 @@ import path from 'path';
 import { rateLimit } from 'express-rate-limit';
 import { initDB, getFullState } from './db.js';
 import { sysconAPI } from './lib/syscon.js';
+import {
+  buildServeTogetherPlan,
+  normalizeMenuDispatchFields
+} from './src/lib/dispatchRules.js';
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
@@ -44,6 +48,18 @@ const loginLimiter = rateLimit({
 const sanitizeKotPart = (value, fallback = 'KOT') => {
   const cleaned = String(value || fallback).replace(/[^a-z0-9]/gi, '').slice(0, 4).toUpperCase();
   return cleaned || fallback;
+};
+
+const normalizeBundleKeys = (value) => {
+  if (Array.isArray(value)) {
+    return value.map(entry => String(entry || '').trim()).filter(Boolean);
+  }
+
+  if (value === undefined || value === null) {
+    return [];
+  }
+
+  return [String(value).trim()].filter(Boolean);
 };
 
 const getAlternativesForItem = async (item) => {
@@ -232,6 +248,7 @@ io.on('connection', async (socket) => {
             return;
           }
           const qty = parseInt(item.qty) || 1;
+          const dispatchRules = normalizeMenuDispatchFields(dbItem);
           validatedItems.push({
             id: dbItem.id,
             name: dbItem.name,
@@ -241,6 +258,9 @@ io.on('connection', async (socket) => {
             category: dbItem.category,
             cuisine: dbItem.cuisine || dbItem.category,
             station_id: dbItem.station_id || 'indian',
+            serveTogetherRole: dispatchRules.serveTogetherRole,
+            serveTogetherFamily: dispatchRules.serveTogetherFamily,
+            serveTogetherFamilyRefs: dispatchRules.serveTogetherFamilyRefs,
             status: 'PENDING'
           });
           subtotal += dbItem.price * qty;
@@ -255,6 +275,9 @@ io.on('connection', async (socket) => {
             category: 'Custom',
             cuisine: 'Custom',
             station_id: 'indian',
+            serveTogetherRole: 'INDEPENDENT',
+            serveTogetherFamily: '',
+            serveTogetherFamilyRefs: '',
             status: 'PENDING'
           });
         }
@@ -264,8 +287,16 @@ io.on('connection', async (socket) => {
         name: i.name,
         price: 0,
         qty: 1,
+        serveTogetherRole: 'INDEPENDENT',
+        serveTogetherFamily: '',
+        serveTogetherFamilyRefs: '',
         status: 'PENDING'
       }));
+    }
+
+    const deliveryPreference = order.deliveryPreference || 'AS_READY';
+    if (orderType === 'FOOD' && deliveryPreference === 'AS_READY') {
+      validatedItems = buildServeTogetherPlan(validatedItems).items;
     }
 
     const serviceCharge = parseFloat((subtotal * (scRate / 100)).toFixed(2));
@@ -285,7 +316,7 @@ io.on('connection', async (socket) => {
         initialStatus, 
         orderType, 
         createdAt, 
-        order.deliveryPreference || 'AS_READY', 
+        deliveryPreference, 
         order.note || '', 
         JSON.stringify(validatedItems), 
         subtotal, 
@@ -494,19 +525,72 @@ app.post('/api/admin/orders', authenticateStaff, async (req, res) => {
 // Partial dispatch of order items from pantry
 app.post('/api/admin/orders/:id/partial-dispatch', authenticateStaff, async (req, res) => {
   const orderId = req.params.id;
-  const { items } = req.body;
-  
-  if (!Array.isArray(items)) return res.status(400).json({ error: 'Items required' });
+  const order = await db.get('SELECT * FROM orders WHERE id = ?', [orderId]);
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+  if (['DELIVERED', 'CANCELLED'].includes(order.status)) {
+    return res.status(400).json({ error: 'Order is already closed' });
+  }
 
-  const allDispatched = items.length > 0 && items.every(i => i.status === 'DISPATCHED');
+  const currentItems = (() => {
+    try {
+      return typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
+    } catch {
+      return [];
+    }
+  })();
+
+  const bundleKeys = normalizeBundleKeys(req.body?.bundleKeys ?? req.body?.serveTogetherKeys ?? req.body?.serveTogetherKey);
+  let updatedItems = null;
+
+  if (bundleKeys.length > 0) {
+    if (order.deliveryPreference !== 'AS_READY') {
+      return res.status(400).json({ error: 'Serve-together group dispatch is only used for as-ready orders' });
+    }
+
+    const dispatchPlan = buildServeTogetherPlan(currentItems);
+    const targetBundles = dispatchPlan.bundles.filter(bundle => bundleKeys.includes(String(bundle.key)));
+
+    if (targetBundles.length === 0) {
+      return res.status(400).json({ error: 'No matching serve-together group was found' });
+    }
+
+    const stillPending = targetBundles.filter(bundle => !bundle.allDispatched && !bundle.canDispatch);
+    if (stillPending.length > 0) {
+      return res.status(400).json({
+        error: 'Selected group is not ready to dispatch yet',
+        bundles: stillPending.map(bundle => ({
+          key: bundle.key,
+          label: bundle.label,
+          readyCount: bundle.readyCount,
+          totalCount: bundle.totalCount
+        }))
+      });
+    }
+
+    const dispatchSet = new Set(bundleKeys.map(key => String(key)));
+    updatedItems = currentItems.map(item => (
+      dispatchSet.has(String(item.serveTogetherKey || ''))
+        ? { ...item, status: 'DISPATCHED' }
+        : item
+    ));
+  } else if (Array.isArray(req.body?.items)) {
+    updatedItems = req.body.items;
+  } else {
+    return res.status(400).json({ error: 'Items or bundle keys required' });
+  }
+
+  const allDispatched = updatedItems.length > 0 && updatedItems.every(i => String(i.status || '').toUpperCase() === 'DISPATCHED');
   const nextStatus = allDispatched ? 'ON_THE_WAY' : 'PREPARING';
   await db.run(
     "UPDATE orders SET items = ?, status = ? WHERE id = ? AND status NOT IN ('DELIVERED', 'CANCELLED')",
-    [JSON.stringify(items), nextStatus, orderId]
+    [JSON.stringify(updatedItems), nextStatus, orderId]
   );
   
   await broadcastState();
-  res.json({ success: true });
+  res.json({
+    success: true,
+    bundles: order.deliveryPreference === 'AS_READY' ? buildServeTogetherPlan(updatedItems).bundles : []
+  });
 });
 
 // Update specific KOT status (printed/ready)
@@ -769,9 +853,10 @@ app.post('/api/admin/menu_items', authenticateAdmin, async (req, res) => {
   }
 
   for (const item of newMenuItems) {
+    const normalized = normalizeMenuDispatchFields(item);
     await db.run(
-      `INSERT INTO menu_items (id, name, desc, price, category, cuisine, station_id, isVeg, available, image) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO menu_items (id, name, desc, price, category, cuisine, station_id, serveTogetherRole, serveTogetherFamily, serveTogetherFamilyRefs, isVeg, available, image) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET 
          name = excluded.name,
          desc = excluded.desc,
@@ -779,10 +864,27 @@ app.post('/api/admin/menu_items', authenticateAdmin, async (req, res) => {
          category = excluded.category,
          cuisine = excluded.cuisine,
          station_id = excluded.station_id,
+         serveTogetherRole = excluded.serveTogetherRole,
+         serveTogetherFamily = excluded.serveTogetherFamily,
+         serveTogetherFamilyRefs = excluded.serveTogetherFamilyRefs,
          isVeg = excluded.isVeg,
          available = excluded.available,
          image = excluded.image`,
-      [item.id, item.name, item.desc, item.price, item.category, item.cuisine || item.category, item.station_id || 'indian', item.isVeg ? 1 : 0, item.available ? 1 : 0, item.image]
+      [
+        item.id,
+        item.name,
+        item.desc,
+        item.price,
+        item.category,
+        item.cuisine || item.category,
+        item.station_id || 'indian',
+        normalized.serveTogetherRole,
+        normalized.serveTogetherFamily,
+        normalized.serveTogetherFamilyRefs,
+        item.isVeg ? 1 : 0,
+        item.available ? 1 : 0,
+        item.image
+      ]
     );
   }
   await broadcastState();

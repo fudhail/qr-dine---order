@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
+import { normalizeMenuDispatchFields } from './src/lib/dispatchRules.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -155,6 +156,9 @@ export const initDB = async () => {
       category TEXT NOT NULL,
       cuisine TEXT,
       station_id TEXT REFERENCES service_stations(id),
+      serveTogetherRole TEXT,
+      serveTogetherFamily TEXT,
+      serveTogetherFamilyRefs TEXT,
       isVeg INTEGER NOT NULL DEFAULT 0,
       available INTEGER NOT NULL DEFAULT 1,
       image TEXT
@@ -235,6 +239,15 @@ export const initDB = async () => {
   if (!menuColumns.some(column => column.name === 'cuisine')) {
     await db.run('ALTER TABLE menu_items ADD COLUMN cuisine TEXT');
   }
+  if (!menuColumns.some(column => column.name === 'serveTogetherRole')) {
+    await db.run('ALTER TABLE menu_items ADD COLUMN serveTogetherRole TEXT');
+  }
+  if (!menuColumns.some(column => column.name === 'serveTogetherFamily')) {
+    await db.run('ALTER TABLE menu_items ADD COLUMN serveTogetherFamily TEXT');
+  }
+  if (!menuColumns.some(column => column.name === 'serveTogetherFamilyRefs')) {
+    await db.run('ALTER TABLE menu_items ADD COLUMN serveTogetherFamilyRefs TEXT');
+  }
   await db.run(`
     UPDATE menu_items
     SET cuisine = CASE
@@ -249,6 +262,24 @@ export const initDB = async () => {
     END
     WHERE cuisine IS NULL OR TRIM(cuisine) = ''
   `);
+  const menuRows = await db.all('SELECT * FROM menu_items');
+  for (const item of menuRows) {
+    const normalized = normalizeMenuDispatchFields(item);
+    const currentRole = String(item.serveTogetherRole || '').trim();
+    const currentFamily = String(item.serveTogetherFamily || '').trim();
+    const currentRefs = String(item.serveTogetherFamilyRefs || '').trim();
+
+    if (
+      currentRole !== normalized.serveTogetherRole ||
+      currentFamily !== normalized.serveTogetherFamily ||
+      currentRefs !== normalized.serveTogetherFamilyRefs
+    ) {
+      await db.run(
+        'UPDATE menu_items SET serveTogetherRole = ?, serveTogetherFamily = ?, serveTogetherFamilyRefs = ? WHERE id = ?',
+        [normalized.serveTogetherRole, normalized.serveTogetherFamily, normalized.serveTogetherFamilyRefs, item.id]
+      );
+    }
+  }
 
   // Seed default stations if empty
   const stationCount = await db.get('SELECT COUNT(*) as count FROM service_stations');
@@ -297,9 +328,14 @@ export const initDB = async () => {
       for (const item of menuItems) {
         const station = item.station_id || mapCategoryToStation(item.category);
         const cuisine = item.cuisine || mapCategoryToCuisine(item.category, item.name);
+        const normalized = normalizeMenuDispatchFields({
+          ...item,
+          station_id: station,
+          cuisine
+        });
         await db.run(
-          'INSERT OR REPLACE INTO menu_items (id, name, desc, price, category, cuisine, station_id, isVeg, available, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [item.id, item.name, item.desc, item.price, item.category, cuisine, station, item.isVeg || 0, item.available || 1, item.image || '']
+          'INSERT OR REPLACE INTO menu_items (id, name, desc, price, category, cuisine, station_id, serveTogetherRole, serveTogetherFamily, serveTogetherFamilyRefs, isVeg, available, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [item.id, item.name, item.desc, item.price, item.category, cuisine, station, normalized.serveTogetherRole, normalized.serveTogetherFamily, normalized.serveTogetherFamilyRefs, item.isVeg || 0, item.available || 1, item.image || '']
         );
       }
 
@@ -346,16 +382,24 @@ export const initDB = async () => {
         }
 
         for (const item of initialData.menu_items) {
+          const station = item.station_id || mapCategoryToStation(item.category);
+          const cuisine = item.cuisine || mapCategoryToCuisine(item.category, item.name);
+          const normalized = normalizeMenuDispatchFields({
+            ...item,
+            station_id: station,
+            cuisine
+          });
           await db.run(
-            'INSERT INTO menu_items (id, name, desc, price, category, cuisine, station_id, isVeg, available, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [item.id, item.name, item.desc, item.price, item.category, item.cuisine, item.station_id, item.isVeg, item.available, item.image]
+            'INSERT INTO menu_items (id, name, desc, price, category, cuisine, station_id, serveTogetherRole, serveTogetherFamily, serveTogetherFamilyRefs, isVeg, available, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [item.id, item.name, item.desc, item.price, item.category, cuisine, station, normalized.serveTogetherRole, normalized.serveTogetherFamily, normalized.serveTogetherFamilyRefs, item.isVeg, item.available, item.image]
           );
         }
 
         for (const service of initialData.services) {
+          const normalized = normalizeMenuDispatchFields(service);
           await db.run(
-            'INSERT INTO menu_items (name, desc, price, category, cuisine, station_id, isVeg, available, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [service.name, service.desc, service.price, service.category, service.cuisine, service.station_id, service.isVeg, service.available, service.image]
+            'INSERT INTO menu_items (name, desc, price, category, cuisine, station_id, serveTogetherRole, serveTogetherFamily, serveTogetherFamilyRefs, isVeg, available, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [service.name, service.desc, service.price, service.category, service.cuisine, service.station_id, normalized.serveTogetherRole, normalized.serveTogetherFamily, normalized.serveTogetherFamilyRefs, service.isVeg, service.available, service.image]
           );
         }
       }

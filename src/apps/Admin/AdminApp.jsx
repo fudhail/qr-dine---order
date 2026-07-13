@@ -10,9 +10,15 @@ import { Card } from '../../components/ui/Card';
 import { VegDot } from '../../components/ui/VegDot';
 import { PinGate } from '../../components/auth/PinGate';
 import { CONFIG } from '../../config';
+import { normalizeMenuDispatchFields } from '../../lib/dispatchRules';
 
 const ACCENT_BLUE = '#2563EB';
 const CUISINE_OPTIONS = ['Indian', 'Chinese', 'Continental', 'Italian', 'American', 'Breakfast', 'Desserts', 'Beverages', 'Services', 'Custom'];
+const SERVE_TOGETHER_ROLE_OPTIONS = [
+  { value: 'ANCHOR', label: 'Anchor / Main' },
+  { value: 'ATTACHABLE', label: 'Attach to Main' },
+  { value: 'INDEPENDENT', label: 'Standalone' },
+];
 
 // Unsplash presets for beautiful food pictures
 const IMAGE_PRESETS = [
@@ -60,6 +66,9 @@ export const AdminApp = ({ config = CONFIG }) => {
     category: 'Mains', 
     cuisine: 'Indian',
     station_id: 'indian',
+    serveTogetherRole: 'ANCHOR',
+    serveTogetherFamily: '',
+    serveTogetherFamilyRefs: '',
     isVeg: true, 
     image: IMAGE_PRESETS[0].url 
   });
@@ -141,14 +150,14 @@ export const AdminApp = ({ config = CONFIG }) => {
   const handleAddItem = (e) => {
     e.preventDefault();
     if (!newItem.name || !newItem.price) return;
-    const createdItem = {
+    const createdItem = normalizeMenuDispatchFields({
       ...newItem,
       id: Date.now(),
       price: Number(newItem.price),
       cuisine: newItem.cuisine || newItem.category,
       station_id: newItem.station_id || stationOptions[0]?.id || 'indian',
       available: true
-    };
+    });
     setMenuItems([createdItem, ...menuItems]);
     setShowAddItemModal(false);
     setNewItem({
@@ -158,6 +167,9 @@ export const AdminApp = ({ config = CONFIG }) => {
       category: 'Mains',
       cuisine: 'Indian',
       station_id: stationOptions[0]?.id || 'indian',
+      serveTogetherRole: 'ANCHOR',
+      serveTogetherFamily: '',
+      serveTogetherFamilyRefs: '',
       isVeg: true,
       image: IMAGE_PRESETS[0].url
     });
@@ -1325,6 +1337,51 @@ export const AdminApp = ({ config = CONFIG }) => {
                           {stationOptions.find(station => station.id === item.station_id)?.name || item.station_id || 'Indian Kitchen'}
                         </div>
                       </div>
+                      <div style={{ gridColumn: '1 / -1', padding: '12px', borderRadius: 14, background: '#F8FAFC', border: `1px solid ${C.borderLight}` }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase', marginBottom: 8 }}>Serve Together Rules</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
+                          <div>
+                            <div style={{ fontSize: 10.5, fontWeight: 800, color: C.textMuted, marginBottom: 5, textTransform: 'uppercase' }}>Role</div>
+                            <select
+                              value={item.serveTogetherRole || normalizeMenuDispatchFields(item).serveTogetherRole}
+                              onChange={(event) => {
+                                const serveTogetherRole = event.target.value;
+                                setMenuItems(menuItems.map(menuItem => menuItem.id === item.id ? { ...menuItem, serveTogetherRole } : menuItem));
+                              }}
+                              style={{ width: '100%', padding: '9px 10px', borderRadius: 10, border: `1px solid ${C.border}`, background: C.white, fontSize: 12.5, fontWeight: 700, color: C.text }}
+                            >
+                              {SERVE_TOGETHER_ROLE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 10.5, fontWeight: 800, color: C.textMuted, marginBottom: 5, textTransform: 'uppercase' }}>Family Key</div>
+                            <input
+                              value={item.serveTogetherFamily || normalizeMenuDispatchFields(item).serveTogetherFamily || ''}
+                              onChange={(event) => {
+                                const serveTogetherFamily = event.target.value;
+                                setMenuItems(menuItems.map(menuItem => menuItem.id === item.id ? { ...menuItem, serveTogetherFamily } : menuItem));
+                              }}
+                              style={{ width: '100%', padding: '9px 10px', borderRadius: 10, border: `1px solid ${C.border}`, background: C.white, fontSize: 12.5, fontWeight: 700, color: C.text, boxSizing: 'border-box' }}
+                              placeholder="grilled-chicken"
+                            />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 10.5, fontWeight: 800, color: C.textMuted, marginBottom: 5, textTransform: 'uppercase' }}>Compatible Families</div>
+                            <input
+                              value={item.serveTogetherFamilyRefs || normalizeMenuDispatchFields(item).serveTogetherFamilyRefs || ''}
+                              onChange={(event) => {
+                                const serveTogetherFamilyRefs = event.target.value;
+                                setMenuItems(menuItems.map(menuItem => menuItem.id === item.id ? { ...menuItem, serveTogetherFamilyRefs } : menuItem));
+                              }}
+                              style={{ width: '100%', padding: '9px 10px', borderRadius: 10, border: `1px solid ${C.border}`, background: C.white, fontSize: 12.5, fontWeight: 700, color: C.text, boxSizing: 'border-box' }}
+                              placeholder="grilled-chicken, breakfast-set"
+                            />
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 8, fontSize: 11.5, color: C.textMuted, fontWeight: 600, lineHeight: 1.4 }}>
+                          Anchors define the bundle, attachable sides join the nearest compatible main, and standalone items dispatch on their own.
+                        </div>
+                      </div>
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingTop: 2 }}>
@@ -1912,6 +1969,26 @@ export const AdminApp = ({ config = CONFIG }) => {
                     <option key={station.id} value={station.id}>{station.name}</option>
                   ))}
                 </select>
+              </div>
+
+              <div style={{ padding: 14, borderRadius: 14, background: '#F8FAFC', border: `1px solid ${C.borderLight}` }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase', marginBottom: 10 }}>Serve Together Rules</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Role</label>
+                    <select value={newItem.serveTogetherRole} onChange={e => setNewItem({...newItem, serveTogetherRole: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, background: C.white }}>
+                      {SERVE_TOGETHER_ROLE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Family Key</label>
+                    <input value={newItem.serveTogetherFamily} onChange={e => setNewItem({...newItem, serveTogetherFamily: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, boxSizing: 'border-box' }} placeholder="grilled-chicken" />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: C.textSub, marginBottom: 6, textTransform: 'uppercase' }}>Compatible Families</label>
+                    <input value={newItem.serveTogetherFamilyRefs} onChange={e => setNewItem({...newItem, serveTogetherFamilyRefs: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, boxSizing: 'border-box' }} placeholder="grilled-chicken, breakfast-set" />
+                  </div>
+                </div>
               </div>
 
               <div>

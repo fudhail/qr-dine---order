@@ -8,8 +8,28 @@ import { C } from '../../constants/theme';
 import { PinGate } from '../../components/auth/PinGate';
 import { useStore } from '../../store/useStore';
 import { Card } from '../../components/ui/Card';
+import { buildServeTogetherPlan } from '../../lib/dispatchRules';
 
 const ACCENT_BLUE = '#2563EB';
+const ORDER_CARD_MIN_WIDTH = 270;
+const ORDER_CARD_GAP = 16;
+
+const estimateOrderCardHeight = (order) => {
+  const items = order.items || [];
+  const noteHeight = order.note ? 38 : 0;
+  const footerHeight = order.status === 'PREPARING' || order.status === 'ON_THE_WAY' ? 58 : 42;
+
+  if (order.deliveryPreference === 'AS_READY') {
+    const bundles = buildServeTogetherPlan(items).bundles || [];
+    const bundleHeight = bundles.reduce((total, bundle) => {
+      const warningHeight = bundle.warnings?.length > 0 ? 32 : 0;
+      return total + 58 + warningHeight + (bundle.items.length * 48);
+    }, 0);
+    return 132 + noteHeight + footerHeight + bundleHeight;
+  }
+
+  return 132 + noteHeight + footerHeight + (items.length * 42);
+};
 
 export const KitchenApp = () => {
   const orders = useStore(state => state.orders);
@@ -64,7 +84,7 @@ export const KitchenApp = () => {
     }
   };
 
-  const handlePartialDispatch = async (orderId, updatedItems) => {
+  const handlePartialDispatch = async (orderId, payload) => {
     try {
       await fetch(`/api/admin/orders/${orderId}/partial-dispatch`, {
         method: 'POST',
@@ -72,7 +92,7 @@ export const KitchenApp = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${sessionStorage.getItem('kitchenToken')}`
         },
-        body: JSON.stringify({ items: updatedItems })
+        body: JSON.stringify(payload)
       });
     } catch (err) {
       console.error('Failed to dispatch items:', err);
@@ -433,9 +453,9 @@ export const KitchenApp = () => {
             {/* DINING ORDERS */}
             <div>
               <h2 style={{ fontSize: 18, fontWeight: 800, color: C.text, marginBottom: 16 }}>Pantry Order Queue</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: 24 }}>
-                {orders.length === 0 ? (
-                  Array.from({ length: 3 }).map((_, idx) => (
+              {orders.length === 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(270px, 1fr))', gap: 16, alignItems: 'start' }}>
+                  {Array.from({ length: 3 }).map((_, idx) => (
                     <div key={idx} style={{ padding: 20, background: '#FFF', borderRadius: 20, borderTop: '6px solid #CBD5E1', display: 'flex', flexDirection: 'column', gap: 14, height: 260, border: `1px solid ${C.borderLight}` }}>
                       <div>
                         <div className="shimmer" style={{ width: '40%', height: 12, borderRadius: 4, marginBottom: 8 }} />
@@ -447,32 +467,32 @@ export const KitchenApp = () => {
                         <div className="shimmer" style={{ width: '50%', height: 14, borderRadius: 4 }} />
                       </div>
                     </div>
-                  ))
-                ) : (
-                  <>
-                    {filteredOrders.map(order => (
-                      <TicketCard 
-                        key={order.id} 
-                        order={order} 
-                        updateStatus={updateStatus} 
-                        onPartialDispatch={handlePartialDispatch}
-                      />
-                    ))}
-                    {filteredOrders.length === 0 && (
-                      <div style={{ gridColumn: '1 / -1', background: C.white, borderRadius: 16, padding: 36, textAlign: 'center', color: C.textMuted, border: `1px solid ${C.borderLight}` }}>
-                        No active dining orders right now.
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
+                  ))}
+                </div>
+              ) : filteredOrders.length === 0 ? (
+                <div style={{ background: C.white, borderRadius: 16, padding: 36, textAlign: 'center', color: C.textMuted, border: `1px solid ${C.borderLight}` }}>
+                  No active dining orders right now.
+                </div>
+              ) : (
+                <MasonryOrderGrid
+                  orders={filteredOrders}
+                  renderOrder={(order) => (
+                    <TicketCard
+                      key={order.id}
+                      order={order}
+                      updateStatus={updateStatus}
+                      onPartialDispatch={handlePartialDispatch}
+                    />
+                  )}
+                />
+              )}
             </div>
 
             {/* HOSPITALITY REQUESTS */}
             {activeServiceRequests.length > 0 && (
               <div>
                 <h2 style={{ fontSize: 18, fontWeight: 800, color: C.text, marginBottom: 16 }}>Hospitality Requests</h2>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, alignItems: 'start' }}>
                   {activeServiceRequests.map(order => (
                     <Card key={order.id} style={{ padding: 18, border: `1px solid ${C.borderLight}`, borderRadius: 16 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
@@ -508,6 +528,62 @@ export const KitchenApp = () => {
   );
 };
 
+const MasonryOrderGrid = ({ orders, renderOrder }) => {
+  const containerRef = useRef(null);
+  const [columnCount, setColumnCount] = useState(1);
+
+  useEffect(() => {
+    const updateColumnCount = () => {
+      const width = containerRef.current?.getBoundingClientRect().width || 0;
+      if (!width) return;
+      const nextCount = Math.max(1, Math.floor((width + ORDER_CARD_GAP) / (ORDER_CARD_MIN_WIDTH + ORDER_CARD_GAP)));
+      setColumnCount(nextCount);
+    };
+
+    updateColumnCount();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateColumnCount);
+      return () => window.removeEventListener('resize', updateColumnCount);
+    }
+
+    const observer = new ResizeObserver(updateColumnCount);
+    if (containerRef.current) observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const columns = useMemo(() => {
+    const nextColumns = Array.from({ length: columnCount }, () => ({
+      height: 0,
+      orders: []
+    }));
+
+    orders.forEach(order => {
+      let shortestColumnIndex = 0;
+      for (let index = 1; index < nextColumns.length; index += 1) {
+        if (nextColumns[index].height < nextColumns[shortestColumnIndex].height) {
+          shortestColumnIndex = index;
+        }
+      }
+
+      nextColumns[shortestColumnIndex].orders.push(order);
+      nextColumns[shortestColumnIndex].height += estimateOrderCardHeight(order) + ORDER_CARD_GAP;
+    });
+
+    return nextColumns;
+  }, [orders, columnCount]);
+
+  return (
+    <div ref={containerRef} style={{ display: 'flex', alignItems: 'flex-start', gap: ORDER_CARD_GAP, width: '100%' }}>
+      {columns.map((column, columnIndex) => (
+        <div key={columnIndex} style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: ORDER_CARD_GAP }}>
+          {column.orders.map(order => renderOrder(order))}
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
   const isAsReady = order.deliveryPreference === 'AS_READY';
   const isNew = order.status === 'NEW';
@@ -516,11 +592,20 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
   const isDone = order.status === 'DELIVERED';
 
   const [printLayoutOpen, setPrintLayoutOpen] = useState(false);
+  const orderItems = order.items || [];
+  const indexedOrderItems = useMemo(() => (
+    orderItems.map((item, index) => ({ ...item, uiItemIndex: index }))
+  ), [orderItems]);
+  const dispatchPlan = useMemo(() => (
+    isAsReady ? buildServeTogetherPlan(indexedOrderItems) : { bundles: [] }
+  ), [isAsReady, indexedOrderItems]);
+  const dispatchBundles = dispatchPlan.bundles || [];
+  const readyBundles = dispatchBundles.filter(bundle => bundle.canDispatch && !bundle.allDispatched);
 
   // Group items for sequential printing preview
   const splitKOTs = useMemo(() => {
     const groups = {};
-    order.items.forEach(item => {
+    orderItems.forEach(item => {
       const station = item.station_id || item.category || 'Kitchen';
       const cuisine = item.cuisine || item.category || 'Kitchen';
       const key = `${station}::${cuisine}`;
@@ -528,7 +613,7 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
       groups[key].items.push(item);
     });
     return groups;
-  }, [order]);
+  }, [orderItems]);
   const printableKots = (order.kots && order.kots.length > 0)
     ? order.kots
     : Object.entries(splitKOTs).map(([key, group], index) => ({
@@ -547,28 +632,21 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
 
   // Toggling preparation status of individual items
   const toggleItemState = (index) => {
-    const item = order.items[index];
+    const item = orderItems[index];
     if (!item || isNew || isDone || item.status === 'DISPATCHED') return;
 
-    const updatedItems = order.items.map((currentItem, itemIndex) => {
+    const updatedItems = orderItems.map((currentItem, itemIndex) => {
       if (itemIndex !== index) return currentItem;
-
-      if (isAsReady) {
-        const nextStatus = currentItem.status === 'PENDING'
-          ? 'DONE'
-          : currentItem.status === 'DONE'
-            ? 'DISPATCHED'
-            : 'PENDING';
-        return { ...currentItem, status: nextStatus };
-      }
 
       return { ...currentItem, status: currentItem.status === 'PENDING' ? 'DONE' : 'PENDING' };
     });
 
-    onPartialDispatch(order.id, updatedItems);
+    onPartialDispatch(order.id, { items: updatedItems });
   };
 
-  const allCooked = order.items.every(i => i.status === 'DONE' || i.status === 'DISPATCHED');
+  const allCooked = isAsReady && dispatchBundles.length > 0
+    ? dispatchBundles.every(bundle => bundle.allReady)
+    : orderItems.every(i => i.status === 'DONE' || i.status === 'DISPATCHED');
 
   return (
     <Card style={{ 
@@ -576,13 +654,14 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
       display: 'flex', 
       flexDirection: 'column', 
       overflow: 'hidden',
-      borderRadius: 20,
-      borderTop: `6px solid ${topColor}`,
-      boxShadow: '0 6px 18px rgba(0,0,0,0.03)',
+      alignSelf: 'start',
+      borderRadius: 14,
+      borderTop: `4px solid ${topColor}`,
+      boxShadow: '0 4px 14px rgba(0,0,0,0.03)',
       background: '#FFF'
     }}>
       {/* Header */}
-      <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.borderLight}` }}>
+      <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.borderLight}` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
@@ -593,13 +672,13 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
                 {isAsReady ? 'AS READY' : 'ALL AT ONCE'}
               </div>
             </div>
-            <div style={{ fontWeight: 800, fontSize: 24, color: C.text, lineHeight: 1 }}>{order.token}</div>
+            <div style={{ fontWeight: 800, fontSize: 21, color: C.text, lineHeight: 1 }}>{order.token}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: C.textSub, fontSize: 13, marginTop: 6 }}>
               <MapPin size={12} /> Room {order.room}
             </div>
           </div>
           <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: C.text }}>{order.items.length} Items</div>
+            <div style={{ fontWeight: 700, fontSize: 13, color: C.text }}>{orderItems.length} Items</div>
             <button 
               onClick={() => setPrintLayoutOpen(true)}
               style={{ background: C.borderLight, border: 'none', padding: 6, borderRadius: 6, cursor: 'pointer', display: 'flex' }}
@@ -613,15 +692,134 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
 
       {/* Note */}
       {order.note && (
-        <div style={{ padding: '10px 20px', backgroundColor: '#FEF3C7', borderBottom: `1px solid ${C.borderLight}`, display: 'flex', gap: 6 }}>
+        <div style={{ padding: '8px 14px', backgroundColor: '#FEF3C7', borderBottom: `1px solid ${C.borderLight}`, display: 'flex', gap: 6 }}>
           <AlertTriangle size={14} color="#D97706" style={{ flexShrink: 0, marginTop: 2 }} />
           <span style={{ fontSize: 12, color: '#92400E', fontWeight: 600 }}>{order.note}</span>
         </div>
       )}
 
+      {/* Serve Together Groups */}
+      {isAsReady && dispatchBundles.length > 0 && (
+        <div style={{ padding: '10px 12px 12px', borderBottom: `1px solid ${C.borderLight}`, background: '#F8FAFC' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.5px', color: C.textMuted }}>Serve-together groups</div>
+              <div style={{ fontSize: 12.5, color: C.textSub, fontWeight: 600 }}>
+                {readyBundles.length} ready, {dispatchBundles.length - readyBundles.length} still cooking
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(205px, 1fr))', gap: 10, alignItems: 'start' }}>
+            {dispatchBundles.map(bundle => (
+              <div
+                key={bundle.key}
+                style={{
+                  border: `1px solid ${bundle.allDispatched ? '#D1D5DB' : bundle.canDispatch ? '#86EFAC' : '#E5E7EB'}`,
+                  background: bundle.allDispatched ? '#F8FAFC' : bundle.canDispatch ? '#ECFDF5' : '#FFF',
+                  borderRadius: 12,
+                  padding: 10,
+                  minWidth: 0
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', color: C.textMuted, letterSpacing: '0.5px' }}>
+                      Group {bundle.key} {bundle.kind === 'ANCHOR' ? 'Main set' : bundle.kind === 'INDEPENDENT' ? 'Standalone item' : 'Fallback item'}
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginTop: 2, lineHeight: 1.2 }}>{bundle.label}</div>
+                  </div>
+                  <div style={{ fontSize: 9.5, fontWeight: 900, textTransform: 'uppercase', borderRadius: 999, padding: '4px 7px', background: bundle.allDispatched ? '#E5E7EB' : bundle.canDispatch ? '#DCFCE7' : '#FEF3C7', color: bundle.allDispatched ? '#6B7280' : bundle.canDispatch ? '#15803D' : '#B45309', whiteSpace: 'nowrap' }}>
+                    {bundle.allDispatched ? 'Sent' : bundle.canDispatch ? 'Ready' : `${bundle.readyCount}/${bundle.totalCount} ready`}
+                  </div>
+                </div>
+
+                {bundle.warnings?.length > 0 && (
+                  <div style={{ marginTop: 8, fontSize: 11.5, fontWeight: 700, color: '#B45309', background: '#FFFBEB', borderRadius: 10, padding: '6px 8px' }}>
+                    {bundle.warnings.join(' | ')}
+                  </div>
+                )}
+
+                <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+                  {bundle.items.map((item, itemIndex) => {
+                    const isGroupItemDone = item.status === 'DONE';
+                    const isGroupItemSent = item.status === 'DISPATCHED' || isDone;
+                    const canToggleItem = !isNew && !isDone && !isGroupItemSent;
+
+                    return (
+                      <div
+                        key={`${bundle.key}-${item.uiItemIndex ?? itemIndex}`}
+                        onClick={() => canToggleItem && toggleItemState(item.uiItemIndex)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '7px 8px',
+                          borderRadius: 9,
+                          background: isGroupItemSent ? '#F3F4F6' : isGroupItemDone ? '#ECFDF5' : '#FFFFFF',
+                          border: `1px solid ${isGroupItemDone || isGroupItemSent ? '#BBF7D0' : C.borderLight}`,
+                          cursor: canToggleItem ? 'pointer' : 'default',
+                          opacity: isGroupItemSent ? 0.65 : 1
+                        }}
+                      >
+                        {isGroupItemSent ? (
+                          <CheckSquare size={18} color="#9CA3AF" />
+                        ) : isGroupItemDone ? (
+                          <CheckSquare size={18} color="#10B981" />
+                        ) : (
+                          <Circle size={18} color="#CBD5E1" />
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 800, color: C.text, textDecoration: isGroupItemSent ? 'line-through' : 'none', lineHeight: 1.25 }}>
+                            {item.qty}x {item.name}
+                          </div>
+                          <div style={{ marginTop: 1, fontSize: 10, fontWeight: 700, color: C.textMuted }}>
+                            {item.cuisine || item.category || 'Kitchen'}
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 10, fontWeight: 900, color: isGroupItemSent ? '#9CA3AF' : isGroupItemDone ? '#10B981' : '#6B7280', textTransform: 'uppercase' }}>
+                          {isGroupItemSent ? 'Sent' : isGroupItemDone ? 'Ready' : 'Waiting'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {isAsReady && !bundle.allDispatched && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                    {bundle.canDispatch ? (
+                      <button
+                        onClick={() => onPartialDispatch(order.id, { bundleKeys: [bundle.key] })}
+                        style={{
+                          padding: '7px 10px',
+                          borderRadius: 9,
+                          border: 'none',
+                          background: '#10B981',
+                          color: '#FFF',
+                          fontWeight: 800,
+                          fontSize: 11.5,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Send group
+                      </button>
+                    ) : (
+                      <div style={{ padding: '7px 10px', borderRadius: 9, background: '#E5E7EB', color: '#94A3B8', fontWeight: 800, fontSize: 11.5 }}>
+                        Waiting
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Items List */}
-      <div style={{ padding: '16px 20px', flex: 1, backgroundColor: '#FFF', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {order.items.map((item, idx) => {
+      {(!isAsReady || dispatchBundles.length === 0) && (
+      <div style={{ padding: '12px 14px', flex: 1, backgroundColor: '#FFF', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {orderItems.map((item, idx) => {
           const isItemDone = item.status === 'DONE';
           const isItemDispatched = item.status === 'DISPATCHED' || isDone;
           
@@ -652,6 +850,11 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
                 <div style={{ marginTop: 3, fontSize: 10.5, color: C.textMuted, fontWeight: 700 }}>
                   {item.cuisine || item.category || 'Kitchen'}
                 </div>
+                {isAsReady && item.serveTogetherKey && (
+                  <div style={{ marginTop: 4, fontSize: 10, color: ACCENT_BLUE, fontWeight: 800, textTransform: 'uppercase' }}>
+                    Group {item.serveTogetherKey}{item.serveTogetherWarning ? ` | ${item.serveTogetherWarning}` : ''}
+                  </div>
+                )}
               </div>
               <span style={{ fontSize: 10, fontWeight: 800, color: isItemDispatched ? '#9CA3AF' : isItemDone ? '#10B981' : '#6B7280' }}>
                 {isItemDispatched ? 'Sent' : isItemDone ? 'Chef ready' : 'Waiting'}
@@ -660,9 +863,10 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
           );
         })}
       </div>
+      )}
 
       {/* Action Footer */}
-      <div style={{ padding: 14, backgroundColor: C.sand, borderTop: `1px solid ${C.borderLight}` }}>
+      <div style={{ padding: 12, backgroundColor: C.sand, borderTop: `1px solid ${C.borderLight}` }}>
         {isNew && (
           <button 
             onClick={() => updateStatus(order.id, 'PREPARING')}
@@ -674,20 +878,9 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
         {isPrep && (
           <>
             {isAsReady ? (
-              <button 
-                onClick={() => {
-                  const updatedItems = order.items.map(i => i.status === 'DONE' ? { ...i, status: 'DISPATCHED' } : i);
-                  onPartialDispatch(order.id, updatedItems);
-                }}
-                disabled={!order.items.some(i => i.status === 'DONE')}
-                style={{ 
-                  width: '100%', padding: 12, borderRadius: 10, border: 'none', 
-                  backgroundColor: order.items.some(i => i.status === 'DONE') ? '#10B981' : '#CBD5E1', 
-                  color: '#FFF', fontWeight: 800, fontSize: 14, cursor: 'pointer' 
-                }}
-              >
-                SEND READY ITEMS
-              </button>
+              <div style={{ textAlign: 'center', padding: '4px 8px', fontWeight: 800, color: readyBundles.length > 0 ? '#15803D' : C.textMuted, fontSize: 12 }}>
+                {readyBundles.length > 0 ? `${readyBundles.length} group${readyBundles.length === 1 ? '' : 's'} ready to send` : 'No groups ready yet'}
+              </div>
             ) : (
               <button 
                 onClick={() => updateStatus(order.id, 'ON_THE_WAY')}
@@ -746,7 +939,14 @@ const TicketCard = ({ order, updateStatus, onPartialDispatch }) => {
                   <div style={{ borderTop: '1px solid #D1D5DB', paddingTop: 6 }}>
                     {(kot.items || []).map((item, i) => (
                       <div key={i} style={{ fontSize: 12, fontWeight: 700, margin: '2px 0', display: 'flex', justifyContent: 'space-between' }}>
-                        <span>{item.name}</span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span>{item.name}</span>
+                          {isAsReady && item.serveTogetherKey && (
+                            <span style={{ fontSize: 9, fontWeight: 900, color: ACCENT_BLUE, background: '#EFF6FF', padding: '2px 5px', borderRadius: 999, textTransform: 'uppercase' }}>
+                              Group {item.serveTogetherKey}
+                            </span>
+                          )}
+                        </span>
                         <span>x{item.qty}</span>
                       </div>
                     ))}
